@@ -28,6 +28,7 @@ from django.dispatch import receiver
 from django.utils import timezone
 from filelock import FileLock
 from guardian.shortcuts import remove_perm
+import pathvalidate
 
 from documents import matching
 from documents.caching import clear_document_caches
@@ -321,6 +322,46 @@ def set_storage_path(
 
             document.storage_path = selected
             document.save(update_fields=("storage_path",))
+
+
+def rename_document_by_vendor_and_date(
+    sender,
+    document: Document,
+    *,
+    logging_group=None,
+    **kwargs,
+):
+    """Rename document file to <Vendor>_<YYYY-MM-DD>[_N].<ext>"""
+    if not document.correspondent or not document.filename:
+        return
+
+    vendor = pathvalidate.sanitize_filename(
+        document.correspondent.name.replace(" ", "_"),
+        replacement_text="_",
+    )
+    date_str = document.added.date().isoformat()
+    base_name = f"{vendor}_{date_str}"
+    ext = document.file_type
+
+    old_path = settings.ORIGINALS_DIR / Path(document.filename)
+    if not old_path.exists():
+        return
+
+    counter = 0
+    while True:
+        suffix = f"_{counter}" if counter else ""
+        new_rel = Path(f"{base_name}{suffix}{ext}")
+        new_path = settings.ORIGINALS_DIR / new_rel
+        if new_path == old_path:
+            return
+        if not new_path.exists():
+            break
+        counter += 1
+
+    create_source_path_directory(new_path)
+    old_path.rename(new_path)
+    document.filename = str(new_rel)
+    document.save(update_fields=("filename",))
 
 
 # see empty_trash in documents/tasks.py for signal handling
