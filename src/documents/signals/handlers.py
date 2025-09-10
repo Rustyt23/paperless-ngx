@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 import httpx
+import pathvalidate
 from celery import shared_task
 from celery import states
 from celery.signals import before_task_publish
@@ -24,11 +25,11 @@ from django.db import close_old_connections
 from django.db import connections
 from django.db import models
 from django.db.models import Q
+from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
 from filelock import FileLock
 from guardian.shortcuts import remove_perm
-import pathvalidate
 
 from documents import matching
 from documents.caching import clear_document_caches
@@ -324,44 +325,43 @@ def set_storage_path(
             document.save(update_fields=("storage_path",))
 
 
+@receiver(post_save, sender=Document)
 def rename_document_by_vendor_and_date(
     sender,
-    document: Document,
+    instance: Document,
     *,
-    logging_group=None,
+    created: bool,
     **kwargs,
 ):
-    """Rename document file to <Vendor>_<YYYY-MM-DD>[_N].<ext>"""
-    if not document.correspondent or not document.filename:
+    """Set document title to <Vendor>_<YYYY-MM-DD> and add numeric suffixes."""
+    if not created:
         return
 
+    vendor = instance.correspondent.name if instance.correspondent else "UnknownVendor"
     vendor = pathvalidate.sanitize_filename(
-        document.correspondent.name.replace(" ", "_"),
+        vendor.replace(" ", "_"),
         replacement_text="_",
     )
-    date_str = document.added.date().isoformat()
-    base_name = f"{vendor}_{date_str}"
-    ext = document.file_type
+    date_str = instance.created.isoformat()
+    base_title = f"{vendor}_{date_str}"
 
-    old_path = settings.ORIGINALS_DIR / Path(document.filename)
-    if not old_path.exists():
+    docs = Document.objects.filter(
+        correspondent=instance.correspondent,
+        created=instance.created,
+    ).order_by("pk")
+
+    if docs.count() == 1:
+        doc = docs.first()
+        if doc.title != base_title:
+            doc.title = base_title
+            doc.save(update_fields=("title",))
         return
 
-    counter = 0
-    while True:
-        suffix = f"_{counter}" if counter else ""
-        new_rel = Path(f"{base_name}{suffix}{ext}")
-        new_path = settings.ORIGINALS_DIR / new_rel
-        if new_path == old_path:
-            return
-        if not new_path.exists():
-            break
-        counter += 1
-
-    create_source_path_directory(new_path)
-    old_path.rename(new_path)
-    document.filename = str(new_rel)
-    document.save(update_fields=("filename",))
+    for index, doc in enumerate(docs, start=1):
+        new_title = f"{base_title}_{index}"
+        if doc.title != new_title:
+            doc.title = new_title
+            doc.save(update_fields=("title",))
 
 
 # see empty_trash in documents/tasks.py for signal handling
