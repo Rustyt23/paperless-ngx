@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 import httpx
 import magic
 import pathvalidate
+from pikepdf import Pdf
 from celery import states
 from django.conf import settings
 from django.contrib.auth.models import Group
@@ -1499,6 +1500,7 @@ class PostDocumentView(GenericAPIView):
         archive_serial_number = serializer.validated_data.get("archive_serial_number")
         custom_field_ids = serializer.validated_data.get("custom_fields")
         from_webui = serializer.validated_data.get("from_webui")
+        split_pdf = serializer.validated_data.get("split_pdf")
 
         t = int(mktime(datetime.now().timetuple()))
 
@@ -1512,32 +1514,66 @@ class PostDocumentView(GenericAPIView):
 
         os.utime(temp_file_path, times=(t, t))
 
-        input_doc = ConsumableDocument(
-            source=DocumentSource.WebUI if from_webui else DocumentSource.ApiUpload,
-            original_file=temp_file_path,
-        )
-        input_doc_overrides = DocumentMetadataOverrides(
-            filename=doc_name,
-            title=title,
-            correspondent_id=correspondent_id,
-            document_type_id=document_type_id,
-            storage_path_id=storage_path_id,
-            tag_ids=tag_ids,
-            created=created,
-            asn=archive_serial_number,
-            owner_id=request.user.id,
-            # TODO: set values
-            custom_fields={cf_id: None for cf_id in custom_field_ids}
-            if custom_field_ids
-            else None,
-        )
+        if split_pdf and magic.from_buffer(doc_data, mime=True) == "application/pdf":
+            task_ids = []
+            base_name = pathvalidate.sanitize_filename(Path(doc_name).stem)
+            with Pdf.open(temp_file_path) as pdf:
+                for page_number, page in enumerate(pdf.pages, start=1):
+                    split_name = f"{base_name}_page_{page_number}.pdf"
+                    split_path = temp_file_path.parent / split_name
+                    with Pdf.new() as new_pdf:
+                        new_pdf.pages.append(page)
+                        new_pdf.save(split_path)
+                    os.utime(split_path, times=(t, t))
+                    page_doc = ConsumableDocument(
+                        source=DocumentSource.WebUI if from_webui else DocumentSource.ApiUpload,
+                        original_file=split_path,
+                    )
+                    page_overrides = DocumentMetadataOverrides(
+                        filename=split_name,
+                        title=title,
+                        correspondent_id=correspondent_id,
+                        document_type_id=document_type_id,
+                        storage_path_id=storage_path_id,
+                        tag_ids=tag_ids,
+                        created=created,
+                        asn=archive_serial_number,
+                        owner_id=request.user.id,
+                        custom_fields={cf_id: None for cf_id in custom_field_ids}
+                        if custom_field_ids
+                        else None,
+                    )
+                    async_task = consume_file.delay(page_doc, page_overrides)
+                    task_ids.append(async_task.id)
+            temp_file_path.unlink()
+            return Response({"task_id": task_ids[0] if task_ids else None})
+        else:
+            input_doc = ConsumableDocument(
+                source=DocumentSource.WebUI if from_webui else DocumentSource.ApiUpload,
+                original_file=temp_file_path,
+            )
+            input_doc_overrides = DocumentMetadataOverrides(
+                filename=doc_name,
+                title=title,
+                correspondent_id=correspondent_id,
+                document_type_id=document_type_id,
+                storage_path_id=storage_path_id,
+                tag_ids=tag_ids,
+                created=created,
+                asn=archive_serial_number,
+                owner_id=request.user.id,
+                # TODO: set values
+                custom_fields={cf_id: None for cf_id in custom_field_ids}
+                if custom_field_ids
+                else None,
+            )
 
-        async_task = consume_file.delay(
-            input_doc,
-            input_doc_overrides,
-        )
+            async_task = consume_file.delay(
+                input_doc,
+                input_doc_overrides,
+            )
 
-        return Response(async_task.id)
+            return Response(async_task.id)
 
 
 @extend_schema_view(

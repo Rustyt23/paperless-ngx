@@ -1,12 +1,33 @@
 <pngx-widget-frame *pngxIfPermissions="{ action: PermissionAction.Add, type: PermissionType.Document }" [cardless]="true">
   <div content tourAnchor="tour.upload-widget">
     <form class="justify-content-center d-flex flex-column align-items-center">
-      <button type="button" class="btn btn-outline-dark bg-light shadow-sm w-100 h-100 pt-3 pb-3" (click)="fileUpload.click()">
+      <button
+        type="button"
+        class="btn btn-outline-dark bg-light shadow-sm w-100 h-100 pt-3 pb-3"
+        (click)="fileUpload.click()"
+      >
         <i-bs class="text-primary" name="plus-circle"></i-bs>&nbsp;
         <span class="text-primary" i18n>Upload documents</span>
         <div class="text-muted smaller fst-italic" i18n>or drop files anywhere</div>
       </button>
-      <input type="file" class="visually-hidden" (change)="onFileSelected($event)" multiple #fileUpload>
+      <div class="form-check mt-2">
+        <input
+          class="form-check-input"
+          type="checkbox"
+          id="splitPdfCheckbox"
+          [(ngModel)]="splitPdf"
+        />
+        <label class="form-check-label" for="splitPdfCheckbox" i18n>
+          Split PDF
+        </label>
+      </div>
+      <input
+        type="file"
+        class="visually-hidden"
+        (change)="onFileSelected($event)"
+        multiple
+        #fileUpload
+      />
     </form>
     @if (getStatus().length > 0) {
     <div class="fixed-bottom p-2 p-md-4 d-flex justify-content-end pe-none consumer-status-list" [ngClass]="slimSidebarEnabled ? 'col-slim' : 'offset-md-3 offset-lg-2'">

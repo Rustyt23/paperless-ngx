@@ -16,10 +16,13 @@ export class UploadDocumentsService {
 
   private uploadSubscriptions: Array<Subscription> = []
 
-  public uploadFile(file: File) {
+  public uploadFile(file: File, splitPdf: boolean = false) {
     let formData = new FormData()
     formData.append('document', file, file.name)
     formData.append('from_webui', 'true')
+    if (splitPdf) {
+      formData.append('split_pdf', 'true')
+    }
     let status = this.websocketStatusService.newFileUpload(file.name)
 
     status.message = $localize`Connecting...`
@@ -36,7 +39,10 @@ export class UploadDocumentsService {
             )
             status.message = $localize`Uploading...`
           } else if (event.type == HttpEventType.Response) {
-            status.taskId = event.body['task_id'] ?? event.body.toString()
+            status.taskId =
+              event.body['task_id'] ??
+              event.body['task_ids']?.[0] ??
+              event.body.toString()
             status.message = $localize`Upload complete, waiting...`
             this.uploadSubscriptions[file.name]?.complete()
           }

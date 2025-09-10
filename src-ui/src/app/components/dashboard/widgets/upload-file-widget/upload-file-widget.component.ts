@@ -6,6 +6,7 @@ import {
   NgbAlertModule,
   NgbProgressbarModule,
 } from '@ng-bootstrap/ng-bootstrap'
+import { FormsModule } from '@angular/forms'
 import { NgxBootstrapIconsModule } from 'ngx-bootstrap-icons'
 import { TourNgBootstrapModule } from 'ngx-ui-tour-ng-bootstrap'
 import { ComponentWithPermissions } from 'src/app/components/with-permissions/with-permissions.component'
@@ -34,12 +35,15 @@ import { WidgetFrameComponent } from '../widget-frame/widget-frame.component'
     NgbProgressbarModule,
     NgxBootstrapIconsModule,
     TourNgBootstrapModule,
+    FormsModule,
   ],
 })
 export class UploadFileWidgetComponent extends ComponentWithPermissions {
   private websocketStatusService = inject(WebsocketStatusService)
   private uploadDocumentsService = inject(UploadDocumentsService)
   settingsService = inject(SettingsService)
+
+  splitPdf = false
 
   @ViewChildren(NgbAlert) alerts: QueryList<NgbAlert>
 
@@ -133,7 +137,7 @@ export class UploadFileWidgetComponent extends ComponentWithPermissions {
     const files = (event.target as HTMLInputElement).files
     for (let i = 0; i < files?.length; i++) {
       const file = files.item(i)
-      file && this.uploadDocumentsService.uploadFile(file)
+      file && this.uploadDocumentsService.uploadFile(file, this.splitPdf)
     }
   }
 
