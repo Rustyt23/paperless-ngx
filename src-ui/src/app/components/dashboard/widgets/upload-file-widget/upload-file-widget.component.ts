@@ -1,5 +1,5 @@
 import { NgClass, NgTemplateOutlet } from '@angular/common'
-import { Component, QueryList, ViewChildren, inject } from '@angular/core'
+import { Component, OnInit, QueryList, ViewChildren, inject } from '@angular/core'
 import { RouterModule } from '@angular/router'
 import {
   NgbAlert,
@@ -21,6 +21,8 @@ import {
 } from 'src/app/services/websocket-status.service'
 import { WidgetFrameComponent } from '../widget-frame/widget-frame.component'
 
+export const SPLIT_PDF_STORAGE_KEY = 'upload_split_pdf'
+
 @Component({
   selector: 'pngx-upload-file-widget',
   templateUrl: './upload-file-widget.component.html',
@@ -38,7 +40,10 @@ import { WidgetFrameComponent } from '../widget-frame/widget-frame.component'
     FormsModule,
   ],
 })
-export class UploadFileWidgetComponent extends ComponentWithPermissions {
+export class UploadFileWidgetComponent
+  extends ComponentWithPermissions
+  implements OnInit
+{
   private websocketStatusService = inject(WebsocketStatusService)
   private uploadDocumentsService = inject(UploadDocumentsService)
   settingsService = inject(SettingsService)
@@ -49,6 +54,17 @@ export class UploadFileWidgetComponent extends ComponentWithPermissions {
 
   getStatus() {
     return this.websocketStatusService.getConsumerStatus()
+  }
+
+  ngOnInit() {
+    const storedValue = localStorage.getItem(SPLIT_PDF_STORAGE_KEY)
+    if (storedValue !== null) {
+      this.splitPdf = storedValue === 'true'
+    }
+  }
+
+  onSplitPdfChange() {
+    localStorage.setItem(SPLIT_PDF_STORAGE_KEY, String(this.splitPdf))
   }
 
   getStatusSummary() {

@@ -18,7 +18,10 @@ import {
   FileStatusPhase,
   WebsocketStatusService,
 } from 'src/app/services/websocket-status.service'
-import { UploadFileWidgetComponent } from './upload-file-widget.component'
+import {
+  UploadFileWidgetComponent,
+  SPLIT_PDF_STORAGE_KEY,
+} from './upload-file-widget.component'
 
 const FAILED_STATUSES = [new FileStatus()]
 const WORKING_STATUSES = [new FileStatus(), new FileStatus()]
@@ -45,6 +48,7 @@ describe('UploadFileWidgetComponent', () => {
   let uploadDocumentsService: UploadDocumentsService
 
   beforeEach(async () => {
+    localStorage.clear()
     TestBed.configureTestingModule({
       imports: [
         RouterTestingModule.withRoutes(routes),
@@ -97,6 +101,21 @@ describe('UploadFileWidgetComponent', () => {
     } as any)
     fileInput.nativeElement.dispatchEvent(new Event('change'))
     expect(uploadSpy).toHaveBeenCalled()
+  })
+
+  it('should remember split pdf choice', () => {
+    const newFixture = TestBed.createComponent(UploadFileWidgetComponent)
+    newFixture.detectChanges()
+    const checkbox = newFixture.debugElement.query(
+      By.css('#splitPdfCheckbox')
+    )
+    checkbox.nativeElement.checked = true
+    checkbox.nativeElement.dispatchEvent(new Event('change'))
+    expect(localStorage.getItem(SPLIT_PDF_STORAGE_KEY)).toBe('true')
+
+    const reloadFixture = TestBed.createComponent(UploadFileWidgetComponent)
+    reloadFixture.detectChanges()
+    expect(reloadFixture.componentInstance.splitPdf).toBe(true)
   })
 
   it('should generate stats summary', () => {

@@ -10,12 +10,14 @@
         <span class="text-primary" i18n>Upload documents</span>
         <div class="text-muted smaller fst-italic" i18n>or drop files anywhere</div>
       </button>
-      <div class="form-check mt-2">
+      <div class="form-check form-switch mt-2">
         <input
           class="form-check-input"
           type="checkbox"
           id="splitPdfCheckbox"
+          role="switch"
           [(ngModel)]="splitPdf"
+          (change)="onSplitPdfChange()"
         />
         <label class="form-check-label" for="splitPdfCheckbox" i18n>
           Split PDF
