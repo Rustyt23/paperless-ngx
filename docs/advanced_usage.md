@@ -431,6 +431,8 @@ This allows for complex logic to be included in the format, including [logical s
 and [filters](https://jinja.palletsprojects.com/en/3.1.x/templates/#id11) to manipulate the [variables](#filename-format-variables)
 provided. The template is provided as a string, potentially multiline, and rendered into a single line.
 
+To have filenames match document titles, set the template to `{title}` in the Paperless-ngx settings.
+
 In addition, the entire Document instance is available to be utilized in a more advanced way, as well as some variables which only make sense to be accessed
 with more complex logic.
 

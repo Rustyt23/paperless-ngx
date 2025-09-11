@@ -3,16 +3,13 @@ from __future__ import annotations
 import datetime
 import ipaddress
 import logging
-import re
 import shutil
 import socket
-import string
 from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 import httpx
-import pathvalidate
 from celery import shared_task
 from celery import states
 from celery.signals import before_task_publish
@@ -58,8 +55,7 @@ from documents.permissions import get_objects_for_user_owner_aware
 from documents.permissions import set_permissions_for_object
 from documents.templating.workflows import parse_w_workflow_placeholders
 from documents.utils.date_extract import extract_date
-from documents.utils.date_helpers import format_dmy
-from documents.utils.date_helpers import get_invoice_date
+from documents.utils.rename_from_custom_fields import compute_title
 from documents.utils.vendor_match import match_vendor
 
 if TYPE_CHECKING:
@@ -365,35 +361,22 @@ def autofill_correspondent_and_date(
 
 
 @receiver(post_save, sender=Document)
-def rename_document_by_metadata(sender, instance: Document, **kwargs):
-    """Rename document to '<Vendor>_<DD-MM-YYYY> (N)' when metadata is present."""
-    invoice_date, invoice_field = get_invoice_date(instance)
-    if not instance.correspondent or not invoice_date or invoice_field is None:
-        return
+def rename_document_from_fields(sender, instance: Document, **kwargs):
+    new_title = compute_title(instance)
+    if new_title and instance.title != new_title:
+        instance.title = new_title
+        instance.save(update_fields=("title",))
 
-    vendor = instance.correspondent.name
-    vendor = re.sub(r"\s+", " ", vendor).strip().rstrip(string.punctuation)
-    vendor = vendor.replace(" ", "_")
-    vendor = pathvalidate.sanitize_filename(vendor, replacement_text="_")
 
-    date_str = format_dmy(invoice_date)
-    base = f"{vendor}_{date_str}"
-
-    existing = (
-        Document.objects.filter(
-            correspondent=instance.correspondent,
-            custom_fields__field=invoice_field,
-            custom_fields__value_date=invoice_date,
-        )
-        .exclude(pk=instance.pk)
-        .count()
-    )
-    new_title = f"{base} ({existing + 1})"
-    if instance.title == new_title:
-        return
-
-    instance.title = new_title
-    instance.save(update_fields=("title",))
+@receiver(post_save, sender=CustomFieldInstance)
+def rename_document_from_field_instance(
+    sender, instance: CustomFieldInstance, **kwargs,
+):
+    document = instance.document
+    new_title = compute_title(document)
+    if new_title and document.title != new_title:
+        document.title = new_title
+        document.save(update_fields=("title",))
 
 
 # see empty_trash in documents/tasks.py for signal handling
