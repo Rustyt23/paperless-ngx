@@ -3,8 +3,10 @@ from __future__ import annotations
 import datetime
 import ipaddress
 import logging
+import re
 import shutil
 import socket
+import string
 from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
@@ -56,6 +58,8 @@ from documents.permissions import get_objects_for_user_owner_aware
 from documents.permissions import set_permissions_for_object
 from documents.templating.workflows import parse_w_workflow_placeholders
 from documents.utils.date_extract import extract_date
+from documents.utils.date_helpers import format_dmy
+from documents.utils.date_helpers import get_invoice_date
 from documents.utils.vendor_match import match_vendor
 
 if TYPE_CHECKING:
@@ -361,42 +365,35 @@ def autofill_correspondent_and_date(
 
 
 @receiver(post_save, sender=Document)
-def rename_document_by_vendor_and_date(
-    sender,
-    instance: Document,
-    *,
-    created: bool,
-    **kwargs,
-):
-    """Set document title to <Vendor>_<YYYY-MM-DD> and add numeric suffixes."""
-    if not created:
+def rename_document_by_metadata(sender, instance: Document, **kwargs):
+    """Rename document to '<Vendor>_<DD-MM-YYYY> (N)' when metadata is present."""
+    invoice_date, invoice_field = get_invoice_date(instance)
+    if not instance.correspondent or not invoice_date or invoice_field is None:
         return
 
-    vendor = instance.correspondent.name if instance.correspondent else "UnknownVendor"
-    vendor = pathvalidate.sanitize_filename(
-        vendor.replace(" ", "_"),
-        replacement_text="_",
+    vendor = instance.correspondent.name
+    vendor = re.sub(r"\s+", " ", vendor).strip().rstrip(string.punctuation)
+    vendor = vendor.replace(" ", "_")
+    vendor = pathvalidate.sanitize_filename(vendor, replacement_text="_")
+
+    date_str = format_dmy(invoice_date)
+    base = f"{vendor}_{date_str}"
+
+    existing = (
+        Document.objects.filter(
+            correspondent=instance.correspondent,
+            custom_fields__field=invoice_field,
+            custom_fields__value_date=invoice_date,
+        )
+        .exclude(pk=instance.pk)
+        .count()
     )
-    date_str = instance.created.isoformat()
-    base_title = f"{vendor}_{date_str}"
-
-    docs = Document.objects.filter(
-        correspondent=instance.correspondent,
-        created=instance.created,
-    ).order_by("pk")
-
-    if docs.count() == 1:
-        doc = docs.first()
-        if doc.title != base_title:
-            doc.title = base_title
-            doc.save(update_fields=("title",))
+    new_title = f"{base} ({existing + 1})"
+    if instance.title == new_title:
         return
 
-    for index, doc in enumerate(docs, start=1):
-        new_title = f"{base_title}_{index}"
-        if doc.title != new_title:
-            doc.title = new_title
-            doc.save(update_fields=("title",))
+    instance.title = new_title
+    instance.save(update_fields=("title",))
 
 
 # see empty_trash in documents/tasks.py for signal handling
