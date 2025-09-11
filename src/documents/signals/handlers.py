@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import ipaddress
 import logging
 import shutil
@@ -54,6 +55,8 @@ from documents.models import WorkflowTrigger
 from documents.permissions import get_objects_for_user_owner_aware
 from documents.permissions import set_permissions_for_object
 from documents.templating.workflows import parse_w_workflow_placeholders
+from documents.utils.date_extract import extract_date
+from documents.utils.vendor_match import match_vendor
 
 if TYPE_CHECKING:
     from documents.classifier import DocumentClassifier
@@ -323,6 +326,38 @@ def set_storage_path(
 
             document.storage_path = selected
             document.save(update_fields=("storage_path",))
+
+
+@receiver(post_save, sender=Document)
+def autofill_correspondent_and_date(
+    sender,
+    instance: Document,
+    *,
+    created: bool,
+    **kwargs,
+):
+    """Populate correspondent and created date from OCR text."""
+    if not created:
+        return
+
+    text = instance.content or ""
+    changed: list[str] = []
+
+    if not instance.correspondent:
+        name = match_vendor(text)
+        if name:
+            correspondent, _ = Correspondent.objects.get_or_create(name=name)
+            instance.correspondent = correspondent
+            changed.append("correspondent")
+
+    if instance.created is None or instance.created == datetime.date.today():
+        iso_date = extract_date(text)
+        if iso_date:
+            instance.created = datetime.date.fromisoformat(iso_date)
+            changed.append("created")
+
+    if changed:
+        instance.save(update_fields=changed)
 
 
 @receiver(post_save, sender=Document)
