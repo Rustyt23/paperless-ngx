@@ -111,3 +111,115 @@ def test_invoice_date_enforcement(db):
     cf4.refresh_from_db()
     assert cf4.value_text == "not a date"
     assert {t.name for t in d4.tags.all()} == {"needs-date"}
+
+
+def test_title_from_correspondent_and_date(db):
+    corr = Correspondent.objects.create(name="Jose Gutierrez")
+    date_field = CustomField.objects.create(
+        name="Invoice Date",
+        data_type=CustomField.FieldDataType.STRING,
+    )
+    doc = Document.objects.create(
+        checksum="8" * 32,
+        mime_type="application/pdf",
+        correspondent=corr,
+        content="",
+    )
+    CustomFieldInstance.objects.create(
+        document=doc,
+        field=date_field,
+        value_text="2023-01-10",
+    )
+    doc.refresh_from_db()
+    assert doc.title == "Jose Gutierrez 01-10-2023"
+
+
+def test_title_cleaning(db):
+    corr = Correspondent.objects.create(name="All American Sign Company, Inc.")
+    date_field = CustomField.objects.create(
+        name="Invoice Date",
+        data_type=CustomField.FieldDataType.STRING,
+    )
+    doc = Document.objects.create(
+        checksum="9" * 32,
+        mime_type="application/pdf",
+        correspondent=corr,
+        content="",
+    )
+    CustomFieldInstance.objects.create(
+        document=doc,
+        field=date_field,
+        value_text="08/12/2024",
+    )
+    doc.refresh_from_db()
+    assert doc.title == "All American Sign Company Inc 08-12-2024"
+
+
+def test_title_blocked_vendor(db):
+    corr = Correspondent.objects.create(name="Oak_Wantana")
+    date_field = CustomField.objects.create(
+        name="Invoice Date",
+        data_type=CustomField.FieldDataType.STRING,
+    )
+    doc = Document.objects.create(
+        checksum="a" * 32,
+        mime_type="application/pdf",
+        correspondent=corr,
+        content="",
+    )
+    CustomFieldInstance.objects.create(
+        document=doc,
+        field=date_field,
+        value_text="07-24-2024",
+    )
+    doc.refresh_from_db()
+    assert doc.title == ""
+
+
+def test_title_duplicate_suffix(db):
+    corr = Correspondent.objects.create(name="Jose Gutierrez")
+    date_field = CustomField.objects.create(
+        name="Invoice Date",
+        data_type=CustomField.FieldDataType.STRING,
+    )
+    d1 = Document.objects.create(
+        checksum="b" * 32,
+        mime_type="application/pdf",
+        correspondent=corr,
+        content="",
+    )
+    CustomFieldInstance.objects.create(
+        document=d1,
+        field=date_field,
+        value_text="1/10/23",
+    )
+    d1.refresh_from_db()
+    assert d1.title == "Jose Gutierrez 01-10-2023"
+
+    d2 = Document.objects.create(
+        checksum="c" * 32,
+        mime_type="application/pdf",
+        correspondent=corr,
+        content="",
+    )
+    CustomFieldInstance.objects.create(
+        document=d2,
+        field=date_field,
+        value_text="01-10-2023",
+    )
+    d2.refresh_from_db()
+    assert d2.title == "Jose Gutierrez 01-10-2023 (2)"
+
+    d3 = Document.objects.create(
+        checksum="d" * 32,
+        mime_type="application/pdf",
+        correspondent=corr,
+        content="",
+    )
+    CustomFieldInstance.objects.create(
+        document=d3,
+        field=date_field,
+        value_text="01-10-2023",
+    )
+    d3.refresh_from_db()
+    assert d3.title == "Jose Gutierrez 01-10-2023 (3)"

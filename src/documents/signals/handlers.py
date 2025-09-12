@@ -425,17 +425,23 @@ def autofill_correspondent_and_date(
 
 
 @receiver(post_save, sender=Document)
+def vendor_guard_on_document_save(sender, instance: Document, **kwargs):
+    _guard_correspondent(instance)
+    _auto_assign_correspondent(instance)
+
+
+@receiver(post_save, sender=CustomFieldInstance)
+def vendor_guard_on_field_instance(sender, instance: CustomFieldInstance, **kwargs):
+    _enforce_invoice_date(instance)
+    _auto_assign_correspondent(instance.document)
+
+
+@receiver(post_save, sender=Document)
 def rename_document_from_fields(sender, instance: Document, **kwargs):
     new_title = compute_title(instance)
     if new_title and instance.title != new_title:
         instance.title = new_title
         instance.save(update_fields=("title",))
-
-
-@receiver(post_save, sender=Document)
-def vendor_guard_on_document_save(sender, instance: Document, **kwargs):
-    _guard_correspondent(instance)
-    _auto_assign_correspondent(instance)
 
 
 @receiver(post_save, sender=CustomFieldInstance)
@@ -449,12 +455,6 @@ def rename_document_from_field_instance(
     if new_title and document.title != new_title:
         document.title = new_title
         document.save(update_fields=("title",))
-
-
-@receiver(post_save, sender=CustomFieldInstance)
-def vendor_guard_on_field_instance(sender, instance: CustomFieldInstance, **kwargs):
-    _enforce_invoice_date(instance)
-    _auto_assign_correspondent(instance.document)
 
 
 # see empty_trash in documents/tasks.py for signal handling
