@@ -3,31 +3,28 @@ from __future__ import annotations
 import datetime
 import re
 
+from django.db.models import Q
+
 from documents.models import CustomField
-from documents.models import CustomFieldInstance
 from documents.models import Document
 
 ILLEGAL_CHARS = r'[\\/:*?"<>|]'
 
 
-def get_cf_value(document: Document, field_name: str):
-    try:
-        field = CustomField.objects.get(name=field_name)
-    except CustomField.DoesNotExist:
-        return None
-    try:
-        instance = document.custom_fields.get(field=field)
-    except CustomFieldInstance.DoesNotExist:
-        return None
-    if field.data_type == CustomField.FieldDataType.DATE:
-        return instance.value_date
-    return instance.value_text
-
-
-def sanitize_vendor(name: str) -> str:
-    name = re.sub(r"\s+", " ", name).strip()
+def clean_vendor(name: str) -> str:
+    name = name.strip()
+    name = re.sub(r"[_\-.]+", " ", name)
     name = re.sub(ILLEGAL_CHARS, "", name)
-    return name.replace(" ", "_")
+    name = re.sub(r"\s+", " ", name)
+    while name and not name[0].isalnum():
+        if name[0] == "(" and ")" in name:
+            break
+        name = name[1:]
+    while name and not name[-1].isalnum():
+        if name[-1] == ")" and "(" in name:
+            break
+        name = name[:-1]
+    return name.strip()
 
 
 def compute_title(document: Document) -> str | None:
@@ -59,15 +56,16 @@ def compute_title(document: Document) -> str | None:
     if not invoice_value:
         return None
 
-    vendor_sanitized = sanitize_vendor(vendor_value)
-    date_str = invoice_value.strftime("%d-%m-%Y")
-    base = f"{vendor_sanitized}_{date_str}"
+    vendor_cleaned = clean_vendor(vendor_value)
+    if not vendor_cleaned:
+        return None
+    date_str = invoice_value.strftime("%m-%d-%Y")
+    base = f"{vendor_cleaned} {date_str}"
 
-    vendor_docs = None
-    if vendor_field and document.custom_fields.filter(field=vendor_field).exists():
+    if vendor_field:
         vendor_docs = Document.objects.filter(
-            custom_fields__field=vendor_field,
-            custom_fields__value_text=vendor_value,
+            Q(custom_fields__field=vendor_field, custom_fields__value_text=vendor_value)
+            | Q(correspondent__name=vendor_value),
         )
     else:
         vendor_docs = Document.objects.filter(correspondent__name=vendor_value)
@@ -86,6 +84,7 @@ def compute_title(document: Document) -> str | None:
     existing = (
         vendor_docs.filter(pk__in=date_docs.values("pk"))
         .exclude(pk=document.pk)
+        .distinct()
         .count()
     )
 
