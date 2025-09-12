@@ -1,94 +1,97 @@
 from __future__ import annotations
 
-import datetime
 import re
 
 from documents.models import CustomField
-from documents.models import CustomFieldInstance
 from documents.models import Document
+from documents.utils.vendor_guard import BLOCKLIST
+from documents.utils.vendor_guard import normalize_invoice_date
+from documents.utils.vendor_guard import normalize_name
 
 ILLEGAL_CHARS = r'[\\/:*?"<>|]'
 
 
-def get_cf_value(document: Document, field_name: str):
-    try:
-        field = CustomField.objects.get(name=field_name)
-    except CustomField.DoesNotExist:
-        return None
-    try:
-        instance = document.custom_fields.get(field=field)
-    except CustomFieldInstance.DoesNotExist:
-        return None
-    if field.data_type == CustomField.FieldDataType.DATE:
-        return instance.value_date
-    return instance.value_text
-
-
-def sanitize_vendor(name: str) -> str:
-    name = re.sub(r"\s+", " ", name).strip()
+def _clean_correspondent(name: str) -> str:
+    name = name.strip()
+    name = re.sub(r"[_-]+", " ", name)
     name = re.sub(ILLEGAL_CHARS, "", name)
-    return name.replace(" ", "_")
+    name = re.sub(r"[.,]", "", name)
+    name = re.sub(r"\s+", " ", name)
+    return name.strip(" &+,'().")
 
 
 def compute_title(document: Document) -> str | None:
-    vendor_field = CustomField.objects.filter(name="Vendor Name").first()
-    invoice_field = CustomField.objects.filter(name="Invoice Date").first()
+    vendor_cf = CustomField.objects.filter(name__iexact="Vendor Name").first()
+    invoice_cf = CustomField.objects.filter(name__iexact="Invoice Date").first()
 
-    vendor_value = None
-    if vendor_field:
-        vendor_instance = document.custom_fields.filter(field=vendor_field).first()
-        if vendor_instance:
-            vendor_value = vendor_instance.value_text
-    if not vendor_value and document.correspondent:
-        vendor_value = document.correspondent.name
-    if not vendor_value:
+    vendor = None
+    if document.correspondent:
+        vendor = getattr(
+            document.correspondent,
+            "display_name",
+            document.correspondent.name,
+        )
+    elif vendor_cf:
+        inst = document.custom_fields.filter(field=vendor_cf).first()
+        if inst:
+            vendor = inst.value_text
+    if not vendor or normalize_name(vendor) in BLOCKLIST:
         return None
 
-    invoice_value = None
-    if invoice_field:
-        invoice_instance = document.custom_fields.filter(field=invoice_field).first()
-        if invoice_instance:
-            if invoice_field.data_type == CustomField.FieldDataType.DATE:
-                invoice_value = invoice_instance.value_date
-            else:
-                text = invoice_instance.value_text
-                try:
-                    invoice_value = datetime.date.fromisoformat(text)
-                except ValueError:
-                    return None
-    if not invoice_value:
+    clean_vendor = _clean_correspondent(vendor)
+    if not clean_vendor:
         return None
 
-    vendor_sanitized = sanitize_vendor(vendor_value)
-    date_str = invoice_value.strftime("%d-%m-%Y")
-    base = f"{vendor_sanitized}_{date_str}"
+    if not invoice_cf:
+        return None
+    inst = document.custom_fields.filter(field=invoice_cf).first()
+    if not inst:
+        return None
 
-    vendor_docs = None
-    if vendor_field and document.custom_fields.filter(field=vendor_field).exists():
-        vendor_docs = Document.objects.filter(
-            custom_fields__field=vendor_field,
-            custom_fields__value_text=vendor_value,
+    if invoice_cf.data_type == CustomField.FieldDataType.DATE:
+        if not inst.value_date:
+            return None
+        date_str = inst.value_date.strftime("%m-%d-%Y")
+        date_filter = {
+            "custom_fields__field": invoice_cf,
+            "custom_fields__value_date": inst.value_date,
+        }
+    else:
+        date_str = normalize_invoice_date(inst.value_text)
+        if not date_str:
+            return None
+        date_filter = {
+            "custom_fields__field": invoice_cf,
+            "custom_fields__value_text": date_str,
+        }
+
+    base = f"{clean_vendor} {date_str}"
+    docs_same_date = Document.objects.filter(**date_filter)
+
+    duplicates = 0
+    if document.correspondent_id is not None:
+        duplicates = (
+            docs_same_date.filter(correspondent_id=document.correspondent_id)
+            .exclude(pk=document.pk)
+            .count()
         )
     else:
-        vendor_docs = Document.objects.filter(correspondent__name=vendor_value)
+        qs = docs_same_date.exclude(pk=document.pk).select_related("correspondent")
+        for other in qs:
+            other_name = None
+            if other.correspondent:
+                other_name = getattr(
+                    other.correspondent,
+                    "display_name",
+                    other.correspondent.name,
+                )
+            elif vendor_cf:
+                other_inst = other.custom_fields.filter(field=vendor_cf).first()
+                if other_inst:
+                    other_name = other_inst.value_text
+            if other_name and _clean_correspondent(other_name) == clean_vendor:
+                duplicates += 1
 
-    if invoice_field.data_type == CustomField.FieldDataType.DATE:
-        date_docs = Document.objects.filter(
-            custom_fields__field=invoice_field,
-            custom_fields__value_date=invoice_value,
-        )
-    else:
-        date_docs = Document.objects.filter(
-            custom_fields__field=invoice_field,
-            custom_fields__value_text=invoice_value.isoformat(),
-        )
-
-    existing = (
-        vendor_docs.filter(pk__in=date_docs.values("pk"))
-        .exclude(pk=document.pk)
-        .count()
-    )
-
-    if existing == 0:
-        return base
-    return f"{base} ({existing + 1})"
+    if duplicates:
+        return f"{base} ({duplicates + 1})"
+    return base
