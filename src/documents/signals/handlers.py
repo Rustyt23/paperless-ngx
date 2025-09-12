@@ -43,6 +43,7 @@ from documents.models import CustomFieldInstance
 from documents.models import Document
 from documents.models import DocumentType
 from documents.models import MatchingModel
+from documents.models import Note
 from documents.models import PaperlessTask
 from documents.models import SavedView
 from documents.models import Tag
@@ -56,6 +57,10 @@ from documents.permissions import set_permissions_for_object
 from documents.templating.workflows import parse_w_workflow_placeholders
 from documents.utils.date_extract import extract_date
 from documents.utils.rename_from_custom_fields import compute_title
+from documents.utils.vendor_guard import BLOCKLIST
+from documents.utils.vendor_guard import match_correspondent_by_name
+from documents.utils.vendor_guard import normalize_invoice_date
+from documents.utils.vendor_guard import normalize_name
 from documents.utils.vendor_match import match_vendor
 
 if TYPE_CHECKING:
@@ -64,6 +69,65 @@ if TYPE_CHECKING:
     from documents.data_models import DocumentMetadataOverrides
 
 logger = logging.getLogger("paperless.handlers")
+
+NEEDS_VENDOR_TAG = "needs-vendor"
+NEEDS_DATE_TAG = "needs-date"
+
+
+def _ensure_tag(document: Document, tag_name: str) -> None:
+    tag, _ = Tag.objects.get_or_create(name=tag_name)
+    if tag not in document.tags.all():
+        document.tags.add(tag)
+
+
+def _guard_correspondent(document: Document) -> None:
+    if not document.correspondent:
+        return
+    name = document.correspondent.name
+    if normalize_name(name) in BLOCKLIST:
+        document.correspondent = None
+        document.save(update_fields=("correspondent",))
+        _ensure_tag(document, NEEDS_VENDOR_TAG)
+        Note.objects.create(document=document, note=f"Blocked vendor name: {name}")
+
+
+def _auto_assign_correspondent(document: Document) -> None:
+    if document.correspondent_id is not None:
+        return
+    try:
+        cf = CustomField.objects.get(name__iexact="Vendor Name")
+    except CustomField.DoesNotExist:
+        return
+    try:
+        cfi = CustomFieldInstance.objects.get(document=document, field=cf)
+    except CustomFieldInstance.DoesNotExist:
+        return
+    vendor = cfi.value_text or ""
+    norm = normalize_name(vendor)
+    if not vendor or norm in BLOCKLIST:
+        _ensure_tag(document, NEEDS_VENDOR_TAG)
+        return
+    candidates = match_correspondent_by_name(vendor, Correspondent.objects.all())
+    if len(candidates) == 1:
+        document.correspondent = candidates[0]
+        document.save(update_fields=("correspondent",))
+    else:
+        _ensure_tag(document, NEEDS_VENDOR_TAG)
+
+
+def _enforce_invoice_date(instance: CustomFieldInstance) -> None:
+    if normalize_name(instance.field.name) != normalize_name("Invoice Date"):
+        return
+    if instance.field.data_type != CustomField.FieldDataType.STRING:
+        return
+    current = instance.value_text or ""
+    normalized = normalize_invoice_date(current)
+    if normalized:
+        if current != normalized:
+            instance.value_text = normalized
+            instance.save(update_fields=("value_text",))
+    else:
+        _ensure_tag(instance.document, NEEDS_DATE_TAG)
 
 
 def add_inbox_tags(sender, document: Document, logging_group=None, **kwargs):
@@ -368,15 +432,29 @@ def rename_document_from_fields(sender, instance: Document, **kwargs):
         instance.save(update_fields=("title",))
 
 
+@receiver(post_save, sender=Document)
+def vendor_guard_on_document_save(sender, instance: Document, **kwargs):
+    _guard_correspondent(instance)
+    _auto_assign_correspondent(instance)
+
+
 @receiver(post_save, sender=CustomFieldInstance)
 def rename_document_from_field_instance(
-    sender, instance: CustomFieldInstance, **kwargs,
+    sender,
+    instance: CustomFieldInstance,
+    **kwargs,
 ):
     document = instance.document
     new_title = compute_title(document)
     if new_title and document.title != new_title:
         document.title = new_title
         document.save(update_fields=("title",))
+
+
+@receiver(post_save, sender=CustomFieldInstance)
+def vendor_guard_on_field_instance(sender, instance: CustomFieldInstance, **kwargs):
+    _enforce_invoice_date(instance)
+    _auto_assign_correspondent(instance.document)
 
 
 # see empty_trash in documents/tasks.py for signal handling
