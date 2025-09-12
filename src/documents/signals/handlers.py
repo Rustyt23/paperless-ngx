@@ -56,6 +56,7 @@ from documents.permissions import get_objects_for_user_owner_aware
 from documents.permissions import set_permissions_for_object
 from documents.templating.workflows import parse_w_workflow_placeholders
 from documents.utils.date_extract import extract_date
+from documents.utils.ocr_stats import get_ocr_stats
 from documents.utils.rename_from_custom_fields import compute_title
 from documents.utils.vendor_guard import BLOCKLIST
 from documents.utils.vendor_guard import match_correspondent_by_name
@@ -72,12 +73,19 @@ logger = logging.getLogger("paperless.handlers")
 
 NEEDS_VENDOR_TAG = "needs-vendor"
 NEEDS_DATE_TAG = "needs-date"
+UNIDENTIFIED_NAME = "Unidentified"
 
 
 def _ensure_tag(document: Document, tag_name: str) -> None:
     tag, _ = Tag.objects.get_or_create(name=tag_name)
     if tag not in document.tags.all():
         document.tags.add(tag)
+
+
+def _remove_tag(document: Document, tag_name: str) -> None:
+    tag = Tag.objects.filter(name=tag_name).first()
+    if tag and tag in document.tags.all():
+        document.tags.remove(tag)
 
 
 def _guard_correspondent(document: Document) -> None:
@@ -113,6 +121,24 @@ def _auto_assign_correspondent(document: Document) -> None:
         document.save(update_fields=("correspondent",))
     else:
         _ensure_tag(document, NEEDS_VENDOR_TAG)
+
+
+def _set_unidentified(document: Document) -> None:
+    corr, _ = Correspondent.objects.get_or_create(name=UNIDENTIFIED_NAME)
+    if document.correspondent != corr:
+        document.correspondent = corr
+        document.save(update_fields=("correspondent",))
+    cf = CustomField.objects.filter(name__iexact="Vendor Name").first()
+    if cf is None:
+        cf = CustomField.objects.create(
+            name="Vendor Name",
+            data_type=CustomField.FieldDataType.STRING,
+        )
+    cfi, _ = CustomFieldInstance.objects.get_or_create(document=document, field=cf)
+    if cfi.value_text != UNIDENTIFIED_NAME:
+        cfi.value_text = UNIDENTIFIED_NAME
+        cfi.save(update_fields=("value_text",))
+    _ensure_tag(document, NEEDS_VENDOR_TAG)
 
 
 def _enforce_invoice_date(instance: CustomFieldInstance) -> None:
@@ -427,7 +453,28 @@ def autofill_correspondent_and_date(
 @receiver(post_save, sender=Document)
 def vendor_guard_on_document_save(sender, instance: Document, **kwargs):
     _guard_correspondent(instance)
+    first, overall = get_ocr_stats(instance.source_path, instance.content or "")
+    small = (
+        first.word_count < 10
+        or first.char_count < 30
+        or not first.has_text_layer
+        or overall.word_count < 10
+        or overall.char_count < 30
+        or not overall.has_text_layer
+    )
+    if small:
+        if not instance.correspondent or normalize_name(
+            instance.correspondent.name,
+        ) == normalize_name(UNIDENTIFIED_NAME):
+            _set_unidentified(instance)
+        else:
+            _remove_tag(instance, NEEDS_VENDOR_TAG)
+        return
     _auto_assign_correspondent(instance)
+    if instance.correspondent and normalize_name(
+        instance.correspondent.name,
+    ) != normalize_name(UNIDENTIFIED_NAME):
+        _remove_tag(instance, NEEDS_VENDOR_TAG)
 
 
 @receiver(post_save, sender=CustomFieldInstance)

@@ -2,6 +2,7 @@ from documents.models import Correspondent
 from documents.models import CustomField
 from documents.models import CustomFieldInstance
 from documents.models import Document
+from documents.utils.ocr_stats import OCRStats
 
 
 def create_doc(checksum):
@@ -223,3 +224,51 @@ def test_title_duplicate_suffix(db):
     )
     d3.refresh_from_db()
     assert d3.title == "Jose Gutierrez 01-10-2023 (3)"
+
+
+def test_small_ocr_sets_unidentified(db, monkeypatch):
+    def fake_stats(path, content):
+        return (
+            OCRStats(word_count=5, char_count=25, has_text_layer=True),
+            OCRStats(word_count=5, char_count=25, has_text_layer=True),
+        )
+
+    monkeypatch.setattr(
+        "documents.signals.handlers.get_ocr_stats",
+        fake_stats,
+    )
+    doc = Document.objects.create(
+        checksum="e" * 32,
+        mime_type="application/pdf",
+        content="",
+    )
+    doc.refresh_from_db()
+    assert doc.correspondent.name == "Unidentified"
+    cf = CustomField.objects.get(name="Vendor Name")
+    cfi = CustomFieldInstance.objects.get(document=doc, field=cf)
+    assert cfi.value_text == "Unidentified"
+    assert {t.name for t in doc.tags.all()} == {"needs-vendor"}
+
+
+def test_remove_needs_vendor_tag(db, monkeypatch):
+    def fake_stats(path, content):
+        return (
+            OCRStats(word_count=0, char_count=0, has_text_layer=False),
+            OCRStats(word_count=0, char_count=0, has_text_layer=False),
+        )
+
+    monkeypatch.setattr(
+        "documents.signals.handlers.get_ocr_stats",
+        fake_stats,
+    )
+    doc = Document.objects.create(
+        checksum="f" * 32,
+        mime_type="application/pdf",
+        content="",
+    )
+    corr = Correspondent.objects.create(name="Acme Corp")
+    doc.correspondent = corr
+    doc.save(update_fields=("correspondent",))
+    doc.refresh_from_db()
+    assert doc.correspondent == corr
+    assert {t.name for t in doc.tags.all()} == set()
