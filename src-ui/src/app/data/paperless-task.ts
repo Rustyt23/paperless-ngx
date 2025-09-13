@@ -11,7 +11,6 @@ export enum PaperlessTaskName {
   TrainClassifier = 'train_classifier',
   SanityCheck = 'check_sanity',
   IndexOptimize = 'index_optimize',
-  DocumentExport = 'document_export',
 }
 
 export enum PaperlessTaskStatus {

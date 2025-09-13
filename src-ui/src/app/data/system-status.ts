@@ -43,8 +43,5 @@ export interface SystemStatus {
     sanity_check_status: SystemStatusItemStatus
     sanity_check_last_run: string // ISO date string
     sanity_check_error: string
-    export_status: SystemStatusItemStatus
-    export_last_run: string // ISO date string
-    export_error: string
   }
 }

@@ -296,11 +296,6 @@ CONSUMPTION_DIR = __get_path(
     BASE_DIR.parent / "consume",
 )
 
-EXPORT_DIR = __get_path(
-    "PAPERLESS_EXPORT_DIR",
-    BASE_DIR.parent / "export",
-)
-
 # This will be created if it doesn't exist
 SCRATCH_DIR = __get_path(
     "PAPERLESS_SCRATCH_DIR",
