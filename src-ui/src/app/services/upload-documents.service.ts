@@ -1,7 +1,9 @@
 import { HttpEventType } from '@angular/common/http'
 import { Injectable, inject } from '@angular/core'
 import { Subscription } from 'rxjs'
+import { SETTINGS_KEYS } from '../data/ui-settings'
 import { DocumentService } from './rest/document.service'
+import { SettingsService } from './settings.service'
 import {
   FileStatusPhase,
   WebsocketStatusService,
@@ -13,6 +15,7 @@ import {
 export class UploadDocumentsService {
   private documentService = inject(DocumentService)
   private websocketStatusService = inject(WebsocketStatusService)
+  private settingsService = inject(SettingsService)
 
   private uploadSubscriptions: Array<Subscription> = []
 
@@ -20,6 +23,9 @@ export class UploadDocumentsService {
     let formData = new FormData()
     formData.append('document', file, file.name)
     formData.append('from_webui', 'true')
+    if (this.settingsService.get(SETTINGS_KEYS.UPLOAD_SPLIT)) {
+      formData.append('split', 'true')
+    }
     let status = this.websocketStatusService.newFileUpload(file.name)
 
     status.message = $localize`Connecting...`

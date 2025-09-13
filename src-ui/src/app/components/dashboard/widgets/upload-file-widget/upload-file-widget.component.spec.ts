@@ -73,7 +73,7 @@ describe('UploadFileWidgetComponent', () => {
   })
 
   it('should support browse files', () => {
-    const fileInput = fixture.debugElement.query(By.css('input'))
+    const fileInput = fixture.debugElement.query(By.css('input[type="file"]'))
     const clickSpy = jest.spyOn(fileInput.nativeElement, 'click')
     fixture.debugElement
       .query(By.css('button'))
@@ -87,7 +87,7 @@ describe('UploadFileWidgetComponent', () => {
       [new Blob(['testing'], { type: 'application/pdf' })],
       'file.pdf'
     )
-    const fileInput = fixture.debugElement.query(By.css('input'))
+    const fileInput = fixture.debugElement.query(By.css('input[type="file"]'))
     jest.spyOn(fileInput.nativeElement, 'files', 'get').mockReturnValue({
       item: () => file,
       length: 1,
