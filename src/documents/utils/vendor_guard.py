@@ -1,7 +1,7 @@
 import re
 
 from dateutil import parser
-from rapidfuzz import fuzz
+from .vendor_match import _load_vendor_map
 
 BLOCKED_NAMES_RAW = {
     "private",
@@ -23,10 +23,7 @@ def normalize_name(value: str | None) -> str:
     if not value:
         return ""
     value = value.lower().strip()
-    value = re.sub(r"[_\-,:]", " ", value)
-    # remove periods not between letters or numbers
-    value = re.sub(r"(?<![\w])\.(?![\w])", " ", value)
-    value = re.sub(r"(?<=\s)\.(?=\w)|(?<=\w)\.(?=\s)|(?<=\w)\.(?=$)", " ", value)
+    value = re.sub(r"[_.\-,:]+", " ", value)
     value = re.sub(r"\s+", " ", value)
     return value
 
@@ -62,12 +59,13 @@ def normalize_invoice_date(value: str | None) -> str | None:
 
 def match_correspondent_by_name(name: str, correspondents) -> list:
     norm = normalize_name(name)
-    matches = []
+    vendor_map = _load_vendor_map()
+    mapping: dict[str, list] = {}
     for corr in correspondents:
-        corr_norm = normalize_name(corr.name)
-        if norm == corr_norm:
-            return [corr]
-        score = fuzz.ratio(norm, corr_norm) / 100.0
-        if score >= 0.86:
-            matches.append(corr)
-    return matches
+        names = [corr.name]
+        if corr.name in vendor_map:
+            names.extend(vendor_map[corr.name])
+        for n in names:
+            key = normalize_name(n)
+            mapping.setdefault(key, []).append(corr)
+    return mapping.get(norm, [])

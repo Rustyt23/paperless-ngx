@@ -106,13 +106,21 @@ def _auto_assign_correspondent(document: Document) -> None:
     norm = normalize_name(vendor)
     if not vendor or norm in BLOCKLIST:
         _ensure_tag(document, NEEDS_VENDOR_TAG)
+        Note.objects.create(
+            document=document, note=f"blocked correspondent creation: {vendor}",
+        )
         return
     candidates = match_correspondent_by_name(vendor, Correspondent.objects.all())
     if len(candidates) == 1:
-        document.correspondent = candidates[0]
-        document.save(update_fields=("correspondent",))
+        selected = candidates[0]
+        if document.correspondent != selected:
+            document.correspondent = selected
+            document.save(update_fields=("correspondent",))
     else:
         _ensure_tag(document, NEEDS_VENDOR_TAG)
+        Note.objects.create(
+            document=document, note=f"blocked correspondent creation: {vendor}",
+        )
 
 
 def _enforce_invoice_date(instance: CustomFieldInstance) -> None:
@@ -410,9 +418,15 @@ def autofill_correspondent_and_date(
     if not instance.correspondent:
         name = match_vendor(text)
         if name:
-            correspondent, _ = Correspondent.objects.get_or_create(name=name)
-            instance.correspondent = correspondent
-            changed.append("correspondent")
+            candidates = match_correspondent_by_name(name, Correspondent.objects.all())
+            if len(candidates) == 1:
+                instance.correspondent = candidates[0]
+                changed.append("correspondent")
+            else:
+                _ensure_tag(instance, NEEDS_VENDOR_TAG)
+                Note.objects.create(
+                    document=instance, note=f"blocked correspondent creation: {name}",
+                )
 
     if instance.created is None or instance.created == datetime.date.today():
         iso_date = extract_date(text)
