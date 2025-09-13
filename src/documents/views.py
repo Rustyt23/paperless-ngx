@@ -1,8 +1,10 @@
+import copy
 import itertools
 import logging
 import os
 import platform
 import re
+import subprocess
 import tempfile
 import zipfile
 from datetime import datetime
@@ -166,10 +168,10 @@ from documents.serialisers import WorkflowTriggerSerializer
 from documents.signals import document_updated
 from documents.tasks import consume_file
 from documents.tasks import empty_trash
+from documents.tasks import export_documents
 from documents.tasks import index_optimize
 from documents.tasks import sanity_check
 from documents.tasks import train_classifier
-from documents.tasks import export_documents
 from documents.templating.filepath import validate_filepath_template_and_render
 from documents.utils import get_boolean
 from paperless import version
@@ -1500,6 +1502,7 @@ class PostDocumentView(GenericAPIView):
         archive_serial_number = serializer.validated_data.get("archive_serial_number")
         custom_field_ids = serializer.validated_data.get("custom_fields")
         from_webui = serializer.validated_data.get("from_webui")
+        split = serializer.validated_data.get("split")
 
         t = int(mktime(datetime.now().timetuple()))
 
@@ -1532,6 +1535,31 @@ class PostDocumentView(GenericAPIView):
             if custom_field_ids
             else None,
         )
+
+        if split and doc_name.lower().endswith(".pdf"):
+            split_dir = Path(tempfile.mkdtemp(dir=settings.SCRATCH_DIR))
+            pattern = split_dir / "page-%d.pdf"
+            try:
+                subprocess.run(
+                    ["qpdf", "--split-pages", str(temp_file_path), str(pattern)],
+                    check=True,
+                )
+                task_id = None
+                for idx, page_file in enumerate(sorted(split_dir.glob("page-*.pdf"))):
+                    page_doc = ConsumableDocument(
+                        source=DocumentSource.WebUI
+                        if from_webui
+                        else DocumentSource.ApiUpload,
+                        original_file=page_file,
+                    )
+                    page_overrides = copy.deepcopy(input_doc_overrides)
+                    page_overrides.filename = f"{Path(doc_name).stem}_p{idx + 1}.pdf"
+                    async_task = consume_file.delay(page_doc, page_overrides)
+                    if task_id is None:
+                        task_id = async_task.id
+                return Response(task_id)
+            except Exception as e:
+                logger.warning(f"Failed to split PDF {doc_name}: {e!s}")
 
         async_task = consume_file.delay(
             input_doc,

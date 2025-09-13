@@ -49,6 +49,7 @@ export const SETTINGS_KEYS = {
   NOTES_ENABLED: 'general-settings:notes-enabled',
   AUDITLOG_ENABLED: 'general-settings:auditlog-enabled',
   SLIM_SIDEBAR: 'general-settings:slim-sidebar',
+  UPLOAD_SPLIT: 'general-settings:upload:split',
   UPDATE_CHECKING_ENABLED: 'general-settings:update-checking:enabled',
   UPDATE_CHECKING_BACKEND_SETTING:
     'general-settings:update-checking:backend-setting',
@@ -101,6 +102,11 @@ export const SETTINGS: UiSetting[] = [
   },
   {
     key: SETTINGS_KEYS.SLIM_SIDEBAR,
+    type: 'boolean',
+    default: false,
+  },
+  {
+    key: SETTINGS_KEYS.UPLOAD_SPLIT,
     type: 'boolean',
     default: false,
   },

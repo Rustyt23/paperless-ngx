@@ -5,13 +5,16 @@ import {
   NgbAlert,
   NgbAlertModule,
   NgbProgressbarModule,
+  NgbTooltipModule,
 } from '@ng-bootstrap/ng-bootstrap'
 import { NgxBootstrapIconsModule } from 'ngx-bootstrap-icons'
 import { TourNgBootstrapModule } from 'ngx-ui-tour-ng-bootstrap'
+import { first } from 'rxjs/operators'
 import { ComponentWithPermissions } from 'src/app/components/with-permissions/with-permissions.component'
 import { SETTINGS_KEYS } from 'src/app/data/ui-settings'
 import { IfPermissionsDirective } from 'src/app/directives/if-permissions.directive'
 import { SettingsService } from 'src/app/services/settings.service'
+import { ToastService } from 'src/app/services/toast.service'
 import { UploadDocumentsService } from 'src/app/services/upload-documents.service'
 import {
   FileStatus,
@@ -32,6 +35,7 @@ import { WidgetFrameComponent } from '../widget-frame/widget-frame.component'
     RouterModule,
     NgbAlertModule,
     NgbProgressbarModule,
+    NgbTooltipModule,
     NgxBootstrapIconsModule,
     TourNgBootstrapModule,
   ],
@@ -40,6 +44,7 @@ export class UploadFileWidgetComponent extends ComponentWithPermissions {
   private websocketStatusService = inject(WebsocketStatusService)
   private uploadDocumentsService = inject(UploadDocumentsService)
   settingsService = inject(SettingsService)
+  private toastService = inject(ToastService)
 
   @ViewChildren(NgbAlert) alerts: QueryList<NgbAlert>
 
@@ -135,6 +140,25 @@ export class UploadFileWidgetComponent extends ComponentWithPermissions {
       const file = files.item(i)
       file && this.uploadDocumentsService.uploadFile(file)
     }
+  }
+
+  get splitUploadEnabled(): boolean {
+    return this.settingsService.get(SETTINGS_KEYS.UPLOAD_SPLIT)
+  }
+
+  set splitUploadEnabled(enabled: boolean) {
+    this.settingsService.set(SETTINGS_KEYS.UPLOAD_SPLIT, enabled)
+    this.settingsService
+      .storeSettings()
+      .pipe(first())
+      .subscribe({
+        error: (error) => {
+          this.toastService.showError(
+            $localize`An error occurred while saving settings.`
+          )
+          console.warn(error)
+        },
+      })
   }
 
   get slimSidebarEnabled(): boolean {
