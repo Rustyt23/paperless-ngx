@@ -1504,6 +1504,8 @@ class PostDocumentView(GenericAPIView):
         from_webui = serializer.validated_data.get("from_webui")
         split = serializer.validated_data.get("split")
 
+        mime_type = magic.from_buffer(doc_data, mime=True)
+
         t = int(mktime(datetime.now().timetuple()))
 
         settings.SCRATCH_DIR.mkdir(parents=True, exist_ok=True)
@@ -1536,7 +1538,7 @@ class PostDocumentView(GenericAPIView):
             else None,
         )
 
-        if split and doc_name.lower().endswith(".pdf"):
+        if split and mime_type == "application/pdf":
             split_dir = Path(tempfile.mkdtemp(dir=settings.SCRATCH_DIR))
             pattern = split_dir / "page-%d.pdf"
             try:

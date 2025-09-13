@@ -9,6 +9,7 @@ import {
 } from '@angular/common/http/testing'
 import { TestBed } from '@angular/core/testing'
 import { environment } from 'src/environments/environment'
+import { SettingsService } from './settings.service'
 import { UploadDocumentsService } from './upload-documents.service'
 import {
   FileStatusPhase,
@@ -19,13 +20,19 @@ describe('UploadDocumentsService', () => {
   let httpTestingController: HttpTestingController
   let uploadDocumentsService: UploadDocumentsService
   let websocketStatusService: WebsocketStatusService
+  let settingsService: SettingsService
 
   beforeEach(() => {
+    const settingsStub = {
+      get: jest.fn().mockReturnValue(false),
+    }
+
     TestBed.configureTestingModule({
       imports: [],
       providers: [
         UploadDocumentsService,
         WebsocketStatusService,
+        { provide: SettingsService, useValue: settingsStub },
         provideHttpClient(withInterceptorsFromDi()),
         provideHttpClientTesting(),
       ],
@@ -34,6 +41,7 @@ describe('UploadDocumentsService', () => {
     httpTestingController = TestBed.inject(HttpTestingController)
     uploadDocumentsService = TestBed.inject(UploadDocumentsService)
     websocketStatusService = TestBed.inject(WebsocketStatusService)
+    settingsService = TestBed.inject(SettingsService)
   })
 
   afterEach(() => {
@@ -50,6 +58,21 @@ describe('UploadDocumentsService', () => {
       `${environment.apiBaseUrl}documents/post_document/`
     )
     expect(req[0].request.method).toEqual('POST')
+
+    req[0].flush('123-456')
+  })
+
+  it('appends split flag when enabled', () => {
+    const file = new File(
+      [new Blob(['testing'], { type: 'application/pdf' })],
+      'file.pdf'
+    )
+    ;(settingsService.get as jest.Mock).mockReturnValue(true)
+    uploadDocumentsService.uploadFile(file)
+    const req = httpTestingController.match(
+      `${environment.apiBaseUrl}documents/post_document/`
+    )
+    expect(req[0].request.body.get('split')).toBe('true')
 
     req[0].flush('123-456')
   })
