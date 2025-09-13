@@ -37,6 +37,10 @@ from documents.data_models import DocumentMetadataOverrides
 from documents.data_models import DocumentSource
 from documents.loggers import LoggingMixin
 from documents.models import Correspondent
+from documents.models import Tag
+from documents.utils.vendor_guard import match_correspondent_by_name
+
+NEEDS_VENDOR_TAG = "needs-vendor"
 from documents.parsers import is_mime_type_supported
 from documents.tasks import consume_file
 from paperless_mail.models import MailAccount
@@ -466,12 +470,17 @@ class MailAccountHandler(LoggingMixin):
         else:
             self.log.debug(f"Skipping mail preprocessor {preprocessor_type.NAME}")
 
-    def _correspondent_from_name(self, name: str) -> Correspondent | None:
+    def _correspondent_from_name(self, name: str) -> tuple[Correspondent | None, int | None]:
         try:
-            return Correspondent.objects.get_or_create(name=name)[0]
+            matches = match_correspondent_by_name(name, Correspondent.objects.all())
+            if len(matches) == 1:
+                return matches[0], None
+            tag, _ = Tag.objects.get_or_create(name=NEEDS_VENDOR_TAG)
+            self.log.info(f"Blocked correspondent creation: {name}")
+            return None, tag.id
         except DatabaseError as e:
             self.log.error(f"Error while retrieving correspondent {name}: {e}")
-            return None
+            return None, None
 
     def _get_title(
         self,
@@ -497,25 +506,20 @@ class MailAccountHandler(LoggingMixin):
         self,
         message: MailMessage,
         rule: MailRule,
-    ) -> Correspondent | None:
+    ) -> tuple[Correspondent | None, int | None]:
         c_from = rule.assign_correspondent_from
-
         if c_from == MailRule.CorrespondentSource.FROM_NOTHING:
-            return None
-
+            return None, None
         elif c_from == MailRule.CorrespondentSource.FROM_EMAIL:
             return self._correspondent_from_name(message.from_)
-
         elif c_from == MailRule.CorrespondentSource.FROM_NAME:
             from_values = message.from_values
             if from_values is not None and len(from_values.name) > 0:
                 return self._correspondent_from_name(from_values.name)
             else:
                 return self._correspondent_from_name(message.from_)
-
         elif c_from == MailRule.CorrespondentSource.FROM_CUSTOM:
-            return rule.assign_correspondent
-
+            return rule.assign_correspondent, None
         else:
             raise NotImplementedError(
                 "Unknown correspondent selector",
@@ -801,7 +805,11 @@ class MailAccountHandler(LoggingMixin):
                 )
                 continue
 
-            correspondent = self._get_correspondent(message, rule)
+            correspondent, vendor_tag = self._get_correspondent(message, rule)
+
+            tag_ids_local = list(tag_ids)
+            if vendor_tag and vendor_tag not in tag_ids_local:
+                tag_ids_local.append(vendor_tag)
 
             title = self._get_title(message, att, rule)
 
@@ -844,7 +852,7 @@ class MailAccountHandler(LoggingMixin):
                     filename=pathvalidate.sanitize_filename(att.filename),
                     correspondent_id=correspondent.id if correspondent else None,
                     document_type_id=doc_type.id if doc_type else None,
-                    tag_ids=tag_ids,
+                    tag_ids=tag_ids_local,
                     owner_id=(
                         rule.owner.id
                         if (rule.assign_owner_from_rule and rule.owner)
@@ -928,7 +936,11 @@ class MailAccountHandler(LoggingMixin):
 
             f.write(message.obj.as_bytes())
 
-        correspondent = self._get_correspondent(message, rule)
+        correspondent, vendor_tag = self._get_correspondent(message, rule)
+
+        tag_ids_local = list(tag_ids)
+        if vendor_tag and vendor_tag not in tag_ids_local:
+            tag_ids_local.append(vendor_tag)
 
         self.log.info(
             f"Rule {rule}: "
@@ -946,7 +958,7 @@ class MailAccountHandler(LoggingMixin):
             filename=pathvalidate.sanitize_filename(f"{message.subject}.eml"),
             correspondent_id=correspondent.id if correspondent else None,
             document_type_id=doc_type.id if doc_type else None,
-            tag_ids=tag_ids,
+            tag_ids=tag_ids_local,
             owner_id=rule.owner.id if rule.owner else None,
         )
 

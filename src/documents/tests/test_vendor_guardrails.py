@@ -2,6 +2,7 @@ from documents.models import Correspondent
 from documents.models import CustomField
 from documents.models import CustomFieldInstance
 from documents.models import Document
+from documents.models import Note
 
 
 def create_doc(checksum):
@@ -36,6 +37,20 @@ def test_blocked_correspondent_creation(db):
     doc.refresh_from_db()
     assert doc.correspondent is None
     assert {t.name for t in doc.tags.all()} == {"needs-vendor"}
+
+
+def test_match_only_correspondent_no_creation(db, monkeypatch):
+    monkeypatch.setattr(
+        "documents.utils.vendor_match.match_vendor", lambda text: "Acme West"
+    )
+    doc = create_doc("d" * 32)
+    doc.refresh_from_db()
+    assert doc.correspondent is None
+    assert {t.name for t in doc.tags.all()} == {"needs-vendor"}
+    assert not Correspondent.objects.filter(name="Acme West").exists()
+    assert Note.objects.filter(
+        document=doc, note="blocked correspondent creation: Acme West"
+    ).exists()
 
 
 def test_auto_assign_from_custom_field(db):
