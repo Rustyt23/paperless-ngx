@@ -186,6 +186,7 @@ export class SettingsComponent
         SystemStatusItemStatus.ERROR ||
       this.systemStatus.tasks.sanity_check_status ===
         SystemStatusItemStatus.ERROR ||
+      this.systemStatus.tasks.export_status === SystemStatusItemStatus.ERROR ||
       this.systemStatus.websocket_connected === SystemStatusItemStatus.ERROR
     )
   }
