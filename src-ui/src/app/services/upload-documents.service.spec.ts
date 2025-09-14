@@ -45,11 +45,13 @@ describe('UploadDocumentsService', () => {
       [new Blob(['testing'], { type: 'application/pdf' })],
       'file.pdf'
     )
+    uploadDocumentsService.splitEnabled = true
     uploadDocumentsService.uploadFile(file)
     const req = httpTestingController.match(
       `${environment.apiBaseUrl}documents/post_document/`
     )
     expect(req[0].request.method).toEqual('POST')
+    expect(req[0].request.headers.get('X-Split-Pages')).toEqual('1')
 
     req[0].flush('123-456')
   })

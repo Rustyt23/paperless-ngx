@@ -1,5 +1,6 @@
 import { NgClass, NgTemplateOutlet } from '@angular/common'
 import { Component, QueryList, ViewChildren, inject } from '@angular/core'
+import { FormsModule } from '@angular/forms'
 import { RouterModule } from '@angular/router'
 import {
   NgbAlert,
@@ -29,6 +30,7 @@ import { WidgetFrameComponent } from '../widget-frame/widget-frame.component'
     IfPermissionsDirective,
     NgClass,
     NgTemplateOutlet,
+    FormsModule,
     RouterModule,
     NgbAlertModule,
     NgbProgressbarModule,
@@ -38,7 +40,7 @@ import { WidgetFrameComponent } from '../widget-frame/widget-frame.component'
 })
 export class UploadFileWidgetComponent extends ComponentWithPermissions {
   private websocketStatusService = inject(WebsocketStatusService)
-  private uploadDocumentsService = inject(UploadDocumentsService)
+  public uploadDocumentsService = inject(UploadDocumentsService)
   settingsService = inject(SettingsService)
 
   @ViewChildren(NgbAlert) alerts: QueryList<NgbAlert>

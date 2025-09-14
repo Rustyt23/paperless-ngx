@@ -164,7 +164,7 @@ describe('ConsumerStatusService', () => {
     const task_id = '1234'
     const status = websocketStatusService.newFileUpload('file.pdf')
 
-    documentService.uploadDocument({}).subscribe((event) => {
+    documentService.uploadDocument({}, false).subscribe((event) => {
       if (event.type === HttpEventType.Response) {
         status.taskId = event.body['task_id']
         status.message = $localize`Upload complete, waiting...`

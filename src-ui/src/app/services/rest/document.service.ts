@@ -195,11 +195,15 @@ export class DocumentService extends AbstractPaperlessService<Document> {
     return super.patch(o)
   }
 
-  uploadDocument(formData) {
+  uploadDocument(formData, splitPages: boolean = false) {
     return this.http.post(
       this.getResourceUrl(null, 'post_document'),
       formData,
-      { reportProgress: true, observe: 'events' }
+      {
+        reportProgress: true,
+        observe: 'events',
+        headers: { 'X-Split-Pages': splitPages ? '1' : '0' },
+      }
     )
   }
 
