@@ -1161,6 +1161,25 @@ class TestDocumentApi(DirectoriesMixin, DocumentConsumeDelayMixin, APITestCase):
         self.assertIsNone(overrides.document_type_id)
         self.assertIsNone(overrides.tag_ids)
 
+    def test_upload_split_header(self):
+        self.consume_file_mock.return_value = celery.result.AsyncResult(
+            id=str(uuid.uuid4()),
+        )
+
+        with (Path(__file__).parent / "samples" / "simple.pdf").open("rb") as f:
+            response = self.client.post(
+                "/api/documents/post_document/",
+                {"document": f},
+                HTTP_X_SPLIT_PAGES="1",
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.consume_file_mock.assert_called_once()
+
+        input_doc, _ = self.get_last_consume_delay_call_args()
+        self.assertEqual(Path(input_doc.original_file).name, "simple_page_1.pdf")
+
     def test_create_wrong_endpoint(self):
         response = self.client.post(
             "/api/documents/",

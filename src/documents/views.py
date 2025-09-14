@@ -1501,6 +1501,10 @@ class PostDocumentView(GenericAPIView):
         custom_field_ids = serializer.validated_data.get("custom_fields")
         from_webui = serializer.validated_data.get("from_webui")
         split_pdf = serializer.validated_data.get("split_pdf")
+        if split_pdf is None:
+            header_split = request.headers.get("X-Split-Pages")
+            if header_split is not None:
+                split_pdf = header_split == "1"
 
         t = int(mktime(datetime.now().timetuple()))
 
@@ -1526,7 +1530,9 @@ class PostDocumentView(GenericAPIView):
                         new_pdf.save(split_path)
                     os.utime(split_path, times=(t, t))
                     page_doc = ConsumableDocument(
-                        source=DocumentSource.WebUI if from_webui else DocumentSource.ApiUpload,
+                        source=DocumentSource.WebUI
+                        if from_webui
+                        else DocumentSource.ApiUpload,
                         original_file=split_path,
                     )
                     page_overrides = DocumentMetadataOverrides(
