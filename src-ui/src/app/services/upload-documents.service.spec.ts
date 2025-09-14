@@ -14,6 +14,8 @@ import {
   FileStatusPhase,
   WebsocketStatusService,
 } from './websocket-status.service'
+import { ConfigService } from './config.service'
+import { of } from 'rxjs'
 
 describe('UploadDocumentsService', () => {
   let httpTestingController: HttpTestingController
@@ -26,6 +28,10 @@ describe('UploadDocumentsService', () => {
       providers: [
         UploadDocumentsService,
         WebsocketStatusService,
+        {
+          provide: ConfigService,
+          useValue: { getConfig: () => of({ split_pdf_on_upload: false }) },
+        },
         provideHttpClient(withInterceptorsFromDi()),
         provideHttpClientTesting(),
       ],
@@ -50,7 +56,22 @@ describe('UploadDocumentsService', () => {
       `${environment.apiBaseUrl}documents/post_document/`
     )
     expect(req[0].request.method).toEqual('POST')
+    expect(req[0].request.body.get('split_pdf')).toEqual('false')
 
+    req[0].flush('123-456')
+  })
+
+  it('passes split preference', () => {
+    const file = new File(
+      [new Blob(['testing'], { type: 'application/pdf' })],
+      'file.pdf'
+    )
+    uploadDocumentsService.setSplitPdfOnUpload(true)
+    uploadDocumentsService.uploadFile(file)
+    const req = httpTestingController.match(
+      `${environment.apiBaseUrl}documents/post_document/`
+    )
+    expect(req[0].request.body.get('split_pdf')).toEqual('true')
     req[0].flush('123-456')
   })
 
