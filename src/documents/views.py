@@ -15,7 +15,6 @@ from urllib.parse import urlparse
 import httpx
 import magic
 import pathvalidate
-from pikepdf import Pdf
 from celery import states
 from django.conf import settings
 from django.contrib.auth.models import Group
@@ -59,6 +58,7 @@ from drf_spectacular.utils import extend_schema_view
 from drf_spectacular.utils import inline_serializer
 from langdetect import detect
 from packaging import version as packaging_version
+from pikepdf import Pdf
 from redis import Redis
 from rest_framework import parsers
 from rest_framework import serializers
@@ -154,6 +154,7 @@ from documents.serialisers import RunTaskViewSerializer
 from documents.serialisers import SavedViewSerializer
 from documents.serialisers import SearchResultSerializer
 from documents.serialisers import ShareLinkSerializer
+from documents.serialisers import SplitPdfSettingSerializer
 from documents.serialisers import StoragePathSerializer
 from documents.serialisers import StoragePathTestSerializer
 from documents.serialisers import TagSerializer
@@ -175,6 +176,7 @@ from documents.utils import get_boolean
 from paperless import version
 from paperless.celery import app as celery_app
 from paperless.config import GeneralConfig
+from paperless.config import is_split_enabled
 from paperless.db import GnuPG
 from paperless.models import ApplicationConfiguration
 from paperless.serialisers import GroupSerializer
@@ -1501,6 +1503,7 @@ class PostDocumentView(GenericAPIView):
         custom_field_ids = serializer.validated_data.get("custom_fields")
         from_webui = serializer.validated_data.get("from_webui")
         split_pdf = serializer.validated_data.get("split_pdf")
+        effective_split = split_pdf or is_split_enabled()
 
         t = int(mktime(datetime.now().timetuple()))
 
@@ -1514,7 +1517,10 @@ class PostDocumentView(GenericAPIView):
 
         os.utime(temp_file_path, times=(t, t))
 
-        if split_pdf and magic.from_buffer(doc_data, mime=True) == "application/pdf":
+        if (
+            effective_split
+            and magic.from_buffer(doc_data, mime=True) == "application/pdf"
+        ):
             task_ids = []
             base_name = pathvalidate.sanitize_filename(Path(doc_name).stem)
             with Pdf.open(temp_file_path) as pdf:
@@ -1526,7 +1532,9 @@ class PostDocumentView(GenericAPIView):
                         new_pdf.save(split_path)
                     os.utime(split_path, times=(t, t))
                     page_doc = ConsumableDocument(
-                        source=DocumentSource.WebUI if from_webui else DocumentSource.ApiUpload,
+                        source=DocumentSource.WebUI
+                        if from_webui
+                        else DocumentSource.ApiUpload,
                         original_file=split_path,
                     )
                     page_overrides = DocumentMetadataOverrides(
@@ -2298,6 +2306,23 @@ class UiSettingsView(GenericAPIView):
                 "success": True,
             },
         )
+
+
+class SplitPdfSettingView(GenericAPIView):
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request, format=None):
+        return Response({"value": is_split_enabled()})
+
+    def put(self, request, format=None):
+        serializer = SplitPdfSettingSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        config = ApplicationConfiguration.objects.first()
+        if config is None:
+            config = ApplicationConfiguration.objects.create()
+        config.split_pdf_enabled = serializer.validated_data["value"]
+        config.save(update_fields=["split_pdf_enabled"])
+        return Response({"value": config.split_pdf_enabled})
 
 
 @extend_schema_view(

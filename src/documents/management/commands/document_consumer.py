@@ -1,5 +1,9 @@
 import logging
 import os
+import re
+import shutil
+import subprocess
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from fnmatch import filter
 from pathlib import Path
@@ -13,6 +17,8 @@ from django import db
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.core.management.base import CommandError
+from filelock import FileLock
+from pikepdf import Pdf
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers.polling import PollingObserver
 
@@ -22,6 +28,7 @@ from documents.data_models import DocumentSource
 from documents.models import Tag
 from documents.parsers import is_file_ext_supported
 from documents.tasks import consume_file
+from paperless.config import is_split_enabled
 
 try:
     from inotifyrecursive import INotify
@@ -122,6 +129,68 @@ def _consume(filepath: Path) -> None:
         logger.exception("Error creating tags from path")
 
     try:
+        if (
+            is_split_enabled()
+            and filepath.suffix.lower() == ".pdf"
+            and not re.search(r"__page-\d{5}\.pdf$", filepath.name)
+        ):
+            try:
+                with Pdf.open(filepath) as pdf:
+                    page_count = len(pdf.pages)
+            except Exception:
+                page_count = 1
+            if page_count > 1:
+                lock = FileLock(str(filepath) + ".lock")
+                with lock:
+                    with tempfile.TemporaryDirectory(dir=filepath.parent) as tmp_dir:
+                        tmp_path = Path(tmp_dir)
+                        subprocess.run(
+                            [
+                                "qpdf",
+                                "--split-pages",
+                                str(filepath),
+                                str(tmp_path / "page-%05d.pdf"),
+                            ],
+                            check=True,
+                        )
+                        for page_file in sorted(tmp_path.glob("page-*.pdf")):
+                            idx = int(page_file.stem.split("-")[-1])
+                            split_name = f"{filepath.stem}__page-{idx:05}.pdf"
+                            target = filepath.parent / split_name
+                            shutil.move(str(page_file), target)
+                            try:
+                                subprocess.run(
+                                    [
+                                        "ocrmypdf",
+                                        "--rotate-pages",
+                                        "--rotate-pages-threshold",
+                                        "10",
+                                        "--deskew",
+                                        "--clean",
+                                        "--skip-text",
+                                        str(target),
+                                        str(target),
+                                    ],
+                                    check=True,
+                                )
+                            except Exception:
+                                logger.exception("Error during OCR on split page")
+                            consume_file.delay(
+                                ConsumableDocument(
+                                    source=DocumentSource.ConsumeFolder,
+                                    original_file=target,
+                                ),
+                                DocumentMetadataOverrides(tag_ids=tag_ids),
+                            )
+                    try:
+                        settings.ORIGINALS_DIR.mkdir(parents=True, exist_ok=True)
+                        shutil.move(
+                            str(filepath),
+                            settings.ORIGINALS_DIR / filepath.name,
+                        )
+                    except Exception:
+                        logger.exception("Error moving original after split")
+                return
         logger.info(f"Adding {filepath} to the task queue.")
         consume_file.delay(
             ConsumableDocument(

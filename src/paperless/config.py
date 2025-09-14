@@ -169,3 +169,8 @@ class GeneralConfig(BaseConfig):
 
         self.app_title = app_config.app_title or None
         self.app_logo = app_config.app_logo.url if app_config.app_logo else None
+
+
+def is_split_enabled() -> bool:
+    app_config = BaseConfig._get_config_instance()
+    return bool(app_config.split_pdf_enabled)

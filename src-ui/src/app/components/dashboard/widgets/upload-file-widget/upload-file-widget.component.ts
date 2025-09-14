@@ -1,12 +1,19 @@
 import { NgClass, NgTemplateOutlet } from '@angular/common'
-import { Component, OnInit, QueryList, ViewChildren, inject } from '@angular/core'
+import { HttpClient, HttpClientModule } from '@angular/common/http'
+import {
+  Component,
+  OnInit,
+  QueryList,
+  ViewChildren,
+  inject,
+} from '@angular/core'
+import { FormsModule } from '@angular/forms'
 import { RouterModule } from '@angular/router'
 import {
   NgbAlert,
   NgbAlertModule,
   NgbProgressbarModule,
 } from '@ng-bootstrap/ng-bootstrap'
-import { FormsModule } from '@angular/forms'
 import { NgxBootstrapIconsModule } from 'ngx-bootstrap-icons'
 import { TourNgBootstrapModule } from 'ngx-ui-tour-ng-bootstrap'
 import { ComponentWithPermissions } from 'src/app/components/with-permissions/with-permissions.component'
@@ -38,6 +45,7 @@ export const SPLIT_PDF_STORAGE_KEY = 'upload_split_pdf'
     NgxBootstrapIconsModule,
     TourNgBootstrapModule,
     FormsModule,
+    HttpClientModule,
   ],
 })
 export class UploadFileWidgetComponent
@@ -47,6 +55,7 @@ export class UploadFileWidgetComponent
   private websocketStatusService = inject(WebsocketStatusService)
   private uploadDocumentsService = inject(UploadDocumentsService)
   settingsService = inject(SettingsService)
+  private http = inject(HttpClient)
 
   splitPdf = false
 
@@ -61,10 +70,19 @@ export class UploadFileWidgetComponent
     if (storedValue !== null) {
       this.splitPdf = storedValue === 'true'
     }
+    this.http
+      .get<{ value: boolean }>('/api/settings/split_pdf_enabled/')
+      .subscribe((resp) => {
+        this.splitPdf = resp.value
+        localStorage.setItem(SPLIT_PDF_STORAGE_KEY, String(this.splitPdf))
+      })
   }
 
   onSplitPdfChange() {
     localStorage.setItem(SPLIT_PDF_STORAGE_KEY, String(this.splitPdf))
+    this.http
+      .put('/api/settings/split_pdf_enabled/', { value: this.splitPdf })
+      .subscribe()
   }
 
   getStatusSummary() {

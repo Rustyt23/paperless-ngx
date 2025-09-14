@@ -1744,6 +1744,10 @@ class PostDocumentSerializer(serializers.Serializer):
             return created.date()
 
 
+class SplitPdfSettingSerializer(serializers.Serializer):
+    value = serializers.BooleanField()
+
+
 class BulkDownloadSerializer(DocumentListSerializer):
     content = serializers.ChoiceField(
         choices=["archive", "originals", "both"],

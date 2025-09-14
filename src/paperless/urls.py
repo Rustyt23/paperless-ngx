@@ -31,6 +31,7 @@ from documents.views import SearchAutoCompleteView
 from documents.views import SelectionDataView
 from documents.views import SharedLinkView
 from documents.views import ShareLinkViewSet
+from documents.views import SplitPdfSettingView
 from documents.views import StatisticsView
 from documents.views import StoragePathViewSet
 from documents.views import SystemStatusView
@@ -154,6 +155,11 @@ urlpatterns = [
                     "^ui_settings/",
                     UiSettingsView.as_view(),
                     name="ui_settings",
+                ),
+                path(
+                    "settings/split_pdf_enabled/",
+                    SplitPdfSettingView.as_view(),
+                    name="split_pdf_enabled",
                 ),
                 path(
                     "token/",
