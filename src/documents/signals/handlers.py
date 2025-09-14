@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import ipaddress
 import logging
 import shutil
@@ -24,6 +25,7 @@ from django.db import close_old_connections
 from django.db import connections
 from django.db import models
 from django.db.models import Q
+from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
 from filelock import FileLock
@@ -52,6 +54,9 @@ from documents.models import WorkflowTrigger
 from documents.permissions import get_objects_for_user_owner_aware
 from documents.permissions import set_permissions_for_object
 from documents.templating.workflows import parse_w_workflow_placeholders
+from documents.utils.date_extract import extract_date
+from documents.utils.rename_from_custom_fields import compute_title
+from documents.utils.vendor_match import match_vendor
 
 if TYPE_CHECKING:
     from documents.classifier import DocumentClassifier
@@ -321,6 +326,57 @@ def set_storage_path(
 
             document.storage_path = selected
             document.save(update_fields=("storage_path",))
+
+
+@receiver(post_save, sender=Document)
+def autofill_correspondent_and_date(
+    sender,
+    instance: Document,
+    *,
+    created: bool,
+    **kwargs,
+):
+    """Populate correspondent and created date from OCR text."""
+    if not created:
+        return
+
+    text = instance.content or ""
+    changed: list[str] = []
+
+    if not instance.correspondent:
+        name = match_vendor(text)
+        if name:
+            correspondent, _ = Correspondent.objects.get_or_create(name=name)
+            instance.correspondent = correspondent
+            changed.append("correspondent")
+
+    if instance.created is None or instance.created == datetime.date.today():
+        iso_date = extract_date(text)
+        if iso_date:
+            instance.created = datetime.date.fromisoformat(iso_date)
+            changed.append("created")
+
+    if changed:
+        instance.save(update_fields=changed)
+
+
+@receiver(post_save, sender=Document)
+def rename_document_from_fields(sender, instance: Document, **kwargs):
+    new_title = compute_title(instance)
+    if new_title and instance.title != new_title:
+        instance.title = new_title
+        instance.save(update_fields=("title",))
+
+
+@receiver(post_save, sender=CustomFieldInstance)
+def rename_document_from_field_instance(
+    sender, instance: CustomFieldInstance, **kwargs,
+):
+    document = instance.document
+    new_title = compute_title(document)
+    if new_title and document.title != new_title:
+        document.title = new_title
+        document.save(update_fields=("title",))
 
 
 # see empty_trash in documents/tasks.py for signal handling

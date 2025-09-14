@@ -1,11 +1,12 @@
 import { NgClass, NgTemplateOutlet } from '@angular/common'
-import { Component, QueryList, ViewChildren, inject } from '@angular/core'
+import { Component, OnInit, QueryList, ViewChildren, inject } from '@angular/core'
 import { RouterModule } from '@angular/router'
 import {
   NgbAlert,
   NgbAlertModule,
   NgbProgressbarModule,
 } from '@ng-bootstrap/ng-bootstrap'
+import { FormsModule } from '@angular/forms'
 import { NgxBootstrapIconsModule } from 'ngx-bootstrap-icons'
 import { TourNgBootstrapModule } from 'ngx-ui-tour-ng-bootstrap'
 import { ComponentWithPermissions } from 'src/app/components/with-permissions/with-permissions.component'
@@ -19,6 +20,8 @@ import {
   WebsocketStatusService,
 } from 'src/app/services/websocket-status.service'
 import { WidgetFrameComponent } from '../widget-frame/widget-frame.component'
+
+export const SPLIT_PDF_STORAGE_KEY = 'upload_split_pdf'
 
 @Component({
   selector: 'pngx-upload-file-widget',
@@ -34,17 +37,34 @@ import { WidgetFrameComponent } from '../widget-frame/widget-frame.component'
     NgbProgressbarModule,
     NgxBootstrapIconsModule,
     TourNgBootstrapModule,
+    FormsModule,
   ],
 })
-export class UploadFileWidgetComponent extends ComponentWithPermissions {
+export class UploadFileWidgetComponent
+  extends ComponentWithPermissions
+  implements OnInit
+{
   private websocketStatusService = inject(WebsocketStatusService)
   private uploadDocumentsService = inject(UploadDocumentsService)
   settingsService = inject(SettingsService)
+
+  splitPdf = false
 
   @ViewChildren(NgbAlert) alerts: QueryList<NgbAlert>
 
   getStatus() {
     return this.websocketStatusService.getConsumerStatus()
+  }
+
+  ngOnInit() {
+    const storedValue = localStorage.getItem(SPLIT_PDF_STORAGE_KEY)
+    if (storedValue !== null) {
+      this.splitPdf = storedValue === 'true'
+    }
+  }
+
+  onSplitPdfChange() {
+    localStorage.setItem(SPLIT_PDF_STORAGE_KEY, String(this.splitPdf))
   }
 
   getStatusSummary() {
@@ -133,7 +153,7 @@ export class UploadFileWidgetComponent extends ComponentWithPermissions {
     const files = (event.target as HTMLInputElement).files
     for (let i = 0; i < files?.length; i++) {
       const file = files.item(i)
-      file && this.uploadDocumentsService.uploadFile(file)
+      file && this.uploadDocumentsService.uploadFile(file, this.splitPdf)
     }
   }
 

@@ -18,7 +18,10 @@ import {
   FileStatusPhase,
   WebsocketStatusService,
 } from 'src/app/services/websocket-status.service'
-import { UploadFileWidgetComponent } from './upload-file-widget.component'
+import {
+  UploadFileWidgetComponent,
+  SPLIT_PDF_STORAGE_KEY,
+} from './upload-file-widget.component'
 
 const FAILED_STATUSES = [new FileStatus()]
 const WORKING_STATUSES = [new FileStatus(), new FileStatus()]
@@ -45,6 +48,7 @@ describe('UploadFileWidgetComponent', () => {
   let uploadDocumentsService: UploadDocumentsService
 
   beforeEach(async () => {
+    localStorage.clear()
     TestBed.configureTestingModule({
       imports: [
         RouterTestingModule.withRoutes(routes),
@@ -73,7 +77,7 @@ describe('UploadFileWidgetComponent', () => {
   })
 
   it('should support browse files', () => {
-    const fileInput = fixture.debugElement.query(By.css('input'))
+    const fileInput = fixture.debugElement.query(By.css('input[type="file"]'))
     const clickSpy = jest.spyOn(fileInput.nativeElement, 'click')
     fixture.debugElement
       .query(By.css('button'))
@@ -87,7 +91,7 @@ describe('UploadFileWidgetComponent', () => {
       [new Blob(['testing'], { type: 'application/pdf' })],
       'file.pdf'
     )
-    const fileInput = fixture.debugElement.query(By.css('input'))
+    const fileInput = fixture.debugElement.query(By.css('input[type="file"]'))
     jest.spyOn(fileInput.nativeElement, 'files', 'get').mockReturnValue({
       item: () => file,
       length: 1,
@@ -97,6 +101,21 @@ describe('UploadFileWidgetComponent', () => {
     } as any)
     fileInput.nativeElement.dispatchEvent(new Event('change'))
     expect(uploadSpy).toHaveBeenCalled()
+  })
+
+  it('should remember split pdf choice', () => {
+    const newFixture = TestBed.createComponent(UploadFileWidgetComponent)
+    newFixture.detectChanges()
+    const checkbox = newFixture.debugElement.query(
+      By.css('#splitPdfCheckbox')
+    )
+    checkbox.nativeElement.checked = true
+    checkbox.nativeElement.dispatchEvent(new Event('change'))
+    expect(localStorage.getItem(SPLIT_PDF_STORAGE_KEY)).toBe('true')
+
+    const reloadFixture = TestBed.createComponent(UploadFileWidgetComponent)
+    reloadFixture.detectChanges()
+    expect(reloadFixture.componentInstance.splitPdf).toBe(true)
   })
 
   it('should generate stats summary', () => {
