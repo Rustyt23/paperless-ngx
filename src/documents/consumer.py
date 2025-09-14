@@ -96,6 +96,7 @@ class ConsumerStatusShortMessage(str, Enum):
     SAVE_DOCUMENT = "save_document"
     FINISHED = "finished"
     FAILED = "failed"
+    BLANK_PAGE = "blank_page"
 
 
 class ConsumerPluginMixin:
@@ -429,6 +430,23 @@ class ConsumerPlugin(
                 date = parse_date(self.filename, text)
             archive_path = document_parser.get_archive_path()
             page_count = document_parser.get_page_count(self.working_copy, mime_type)
+
+            if not text or len(text.strip()) < 10:
+                document_parser.cleanup()
+                if tempdir:
+                    tempdir.cleanup()
+                self._send_progress(
+                    100,
+                    100,
+                    ProgressStatusOptions.SUCCESS,
+                    ConsumerStatusShortMessage.BLANK_PAGE,
+                )
+                self.log.info(
+                    f"Skipping {self.filename}: blank after OCR",
+                )
+                self.input_doc.original_file.unlink()
+                self.working_copy.unlink()
+                return f"Blank document {self.filename} skipped"
 
         except ParseError as e:
             document_parser.cleanup()
