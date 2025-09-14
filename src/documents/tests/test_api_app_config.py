@@ -54,6 +54,7 @@ class TestApiAppConfig(DirectoriesMixin, APITestCase):
                 "user_args": None,
                 "app_title": None,
                 "app_logo": None,
+                "split_pdf_enabled": False,
                 "barcodes_enabled": None,
                 "barcode_enable_tiff_support": None,
                 "barcode_string": None,

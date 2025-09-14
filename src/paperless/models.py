@@ -188,6 +188,11 @@ class ApplicationConfiguration(AbstractSingletonModel):
         upload_to="logo/",
     )
 
+    split_pdf_enabled = models.BooleanField(
+        verbose_name=_("Enable splitting of multi-page PDFs"),
+        default=False,
+    )
+
     """
     Settings for the barcode scanner
     """
