@@ -16,6 +16,18 @@ export class UploadDocumentsService {
 
   private uploadSubscriptions: Array<Subscription> = []
 
+  private _splitEnabled =
+    localStorage.getItem('paperless.split.enabled') === 'true'
+
+  get splitEnabled(): boolean {
+    return this._splitEnabled
+  }
+
+  set splitEnabled(value: boolean) {
+    this._splitEnabled = value
+    localStorage.setItem('paperless.split.enabled', value ? 'true' : 'false')
+  }
+
   public uploadFile(file: File) {
     let formData = new FormData()
     formData.append('document', file, file.name)
@@ -25,7 +37,7 @@ export class UploadDocumentsService {
     status.message = $localize`Connecting...`
 
     this.uploadSubscriptions[file.name] = this.documentService
-      .uploadDocument(formData)
+      .uploadDocument(formData, this.splitEnabled)
       .subscribe({
         next: (event) => {
           if (event.type == HttpEventType.UploadProgress) {

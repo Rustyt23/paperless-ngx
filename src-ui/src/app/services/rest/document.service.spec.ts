@@ -150,11 +150,12 @@ describe(`DocumentService`, () => {
   })
 
   it('should call appropriate api endpoint for uploading a document', () => {
-    subscription = service.uploadDocument(documents[0]).subscribe()
+    subscription = service.uploadDocument(documents[0], true).subscribe()
     const req = httpTestingController.expectOne(
       `${environment.apiBaseUrl}${endpoint}/post_document/`
     )
     expect(req.request.method).toEqual('POST')
+    expect(req.request.headers.get('X-Split-Pages')).toEqual('1')
   })
 
   it('should call appropriate api endpoint for getting metadata', () => {
