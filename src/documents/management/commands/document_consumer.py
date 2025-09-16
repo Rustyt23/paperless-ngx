@@ -82,7 +82,12 @@ def _is_ignored(filepath: Path) -> bool:
 
 
 def _consume(filepath: Path) -> None:
-    if filepath.is_dir() or _is_ignored(filepath):
+    if _is_ignored(filepath):
+        return
+
+    if filepath.is_dir():
+        for child in filepath.iterdir():
+            _consume(child.resolve())
         return
 
     if not filepath.is_file():
@@ -321,13 +326,13 @@ class Command(BaseCommand):
                             monotonic() - last_event_time
                         ) > inotify_debounce_secs
 
-                        # Also make sure the file exists still, some scanners might write a
+                        # Also make sure the path exists still, some scanners might write a
                         # temporary file first
-                        file_still_exists = filepath.exists() and filepath.is_file()
+                        path_exists = filepath.exists()
 
-                        if waited_long_enough and file_still_exists:
+                        if waited_long_enough and path_exists:
                             _consume(filepath)
-                        elif file_still_exists:
+                        elif path_exists:
                             still_waiting[filepath] = last_event_time
 
                     # These files are still waiting to hit the timeout

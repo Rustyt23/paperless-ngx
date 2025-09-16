@@ -73,7 +73,7 @@ export class FileDropComponent {
     if (entry.isFile) {
       return new Promise((resolve, reject) => {
         ;(entry as FileSystemFileEntry).file(resolve, reject)
-      }).then((file: File) => [file])
+      }).then((file: File) => (this.isPdfFile(file) ? [file] : []))
     }
 
     if (entry.isDirectory) {
@@ -88,7 +88,9 @@ export class FileDropComponent {
                 this.traverseFileTree(child)
               )
               Promise.all(promises)
-                .then((results) => resolve([].concat(...results)))
+                .then((results) =>
+                  resolve(results.reduce((acc, current) => acc.concat(current), []))
+                )
                 .catch(reject)
             } else {
               allEntries.push(...batch)
@@ -133,9 +135,18 @@ export class FileDropComponent {
       const promises = entries.map((entry) => this.traverseFileTree(entry))
       Promise.all(promises)
         .then((results) => {
-          files.push(...[].concat(...results))
+          const directoryFiles = results.reduce(
+            (acc, current) => acc.concat(current),
+            [] as File[]
+          )
+          const filesToUpload = files.concat(directoryFiles)
+          if (!filesToUpload.length) {
+            return
+          }
           this.toastService.showInfo($localize`Initiating upload...`, 3000)
-          files.forEach((file) => this.uploadDocumentsService.uploadFile(file))
+          filesToUpload.forEach((file) =>
+            this.uploadDocumentsService.uploadFile(file)
+          )
         })
         .catch((e) => {
           this.toastService.showError(
@@ -148,6 +159,14 @@ export class FileDropComponent {
     }
 
     this.onDragLeave(event, true)
+  }
+
+  private isPdfFile(file: File): boolean {
+    if (file.type) {
+      return file.type === 'application/pdf'
+    }
+
+    return file.name?.toLowerCase().endsWith('.pdf') ?? false
   }
 
   @HostListener('window:blur', ['$event']) public onWindowBlur() {

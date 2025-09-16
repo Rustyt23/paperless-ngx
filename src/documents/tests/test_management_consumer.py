@@ -1,5 +1,6 @@
 import filecmp
 import shutil
+import tempfile
 from pathlib import Path
 from threading import Thread
 from time import sleep
@@ -254,6 +255,33 @@ class TestConsumer(DirectoriesMixin, ConsumerThreadMixin, TransactionTestCase):
             consumed_files.append(input_doc.original_file.name)
 
         self.assertCountEqual(consumed_files, ["my_file.pdf", "my_second_file.pdf"])
+
+    def test_consume_directory_with_pdfs(self):
+        self.t_start()
+
+        source_dir = Path(tempfile.mkdtemp())
+        nested_dir = source_dir / "nested"
+        nested_dir.mkdir()
+
+        shutil.copy(self.sample_file, source_dir / "outer.pdf")
+        shutil.copy(self.sample_file, nested_dir / "inner.pdf")
+        (nested_dir / "notes.txt").write_text("skip me")
+
+        target_dir = Path(self.dirs.consumption_dir) / "incoming"
+        shutil.move(str(source_dir), target_dir)
+
+        self.wait_for_task_mock_call(expected_call_count=2)
+
+        consumed_paths = [
+            input_doc.original_file for input_doc, _ in self.get_all_consume_delay_call_args()
+        ]
+
+        pdf_paths = [path for path in consumed_paths if path.suffix.lower() == ".pdf"]
+
+        self.assertCountEqual(
+            pdf_paths,
+            [target_dir / "outer.pdf", target_dir / "nested" / "inner.pdf"],
+        )
 
     def test_is_ignored(self):
         test_paths = [

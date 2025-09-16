@@ -14,6 +14,7 @@ from documents.plugins.base import StopConsumeTaskError
 from documents.plugins.helpers import ProgressStatusOptions
 from documents.utils import copy_basic_file_stats
 from documents.utils import copy_file_with_basic_stats
+from paperless.config import GeneralConfig
 
 logger = logging.getLogger("paperless.split_pages")
 
@@ -23,11 +24,10 @@ class SplitPagesPlugin(ConsumeTaskPlugin):
 
     @property
     def able_to_run(self) -> bool:
-        enabled = (
-            self.metadata.split_pdf_on_upload
-            if self.metadata.split_pdf_on_upload is not None
-            else settings.CONSUMER_SPLIT_PDF_ON_UPLOAD
-        )
+        if self.metadata.split_pdf_on_upload is not None:
+            enabled = self.metadata.split_pdf_on_upload
+        else:
+            enabled = GeneralConfig().split_pdf_on_upload
         return enabled and self.input_doc.mime_type == "application/pdf"
 
     def setup(self) -> None:

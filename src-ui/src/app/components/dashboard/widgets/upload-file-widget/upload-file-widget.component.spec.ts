@@ -39,14 +39,26 @@ const DEFAULT_STATUSES = [
   new FileStatus(),
   new FileStatus(),
 ]
-const STORAGE_KEY = 'paperless-ngx:upload:split-pdf-on-upload'
 
 describe('UploadFileWidgetComponent', () => {
   let component: UploadFileWidgetComponent
   let fixture: ComponentFixture<UploadFileWidgetComponent>
+  let configServiceMock: {
+    getConfig: jest.Mock
+    saveConfig: jest.Mock
+  }
 
   beforeEach(async () => {
-    localStorage.clear()
+    configServiceMock = {
+      getConfig: jest
+        .fn()
+        .mockReturnValue(of({ id: 1, split_pdf_on_upload: false })),
+      saveConfig: jest
+        .fn()
+        .mockImplementation(({ id, split_pdf_on_upload }) =>
+          of({ id, split_pdf_on_upload })
+        ),
+    }
     TestBed.configureTestingModule({
       imports: [
         RouterTestingModule.withRoutes(routes),
@@ -63,10 +75,7 @@ describe('UploadFileWidgetComponent', () => {
         },
         provideHttpClient(withInterceptorsFromDi()),
         provideHttpClientTesting(),
-        {  
-          provide: ConfigService,
-          useValue: { getConfig: () => of({ split_pdf_on_upload: false }) },
-        },
+        { provide: ConfigService, useValue: configServiceMock },
       ],
     }).compileComponents()
   })
@@ -161,8 +170,10 @@ describe('UploadFileWidgetComponent', () => {
     expect(dismissSpy).toHaveBeenCalledTimes(4)
   }))
 
-  it('should initialize split preference from persistence', () => {
-    localStorage.setItem(STORAGE_KEY, 'true')
+  it('should initialize split preference from config', () => {
+    configServiceMock.getConfig.mockReturnValue(
+      of({ id: 1, split_pdf_on_upload: true })
+    )
     createComponent()
     expect(component.splitOnUpload).toBe(true)
   })
