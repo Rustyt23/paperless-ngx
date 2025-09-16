@@ -46,6 +46,7 @@ export const SETTINGS_KEYS = {
     'general-settings:notifications:consumer-failed',
   NOTIFICATIONS_CONSUMER_SUPPRESS_ON_DASHBOARD:
     'general-settings:notifications:consumer-suppress-on-dashboard',
+  SPLIT_PDF_ENABLED: 'split_pdf_enabled',
   NOTES_ENABLED: 'general-settings:notes-enabled',
   AUDITLOG_ENABLED: 'general-settings:auditlog-enabled',
   SLIM_SIDEBAR: 'general-settings:slim-sidebar',
@@ -163,6 +164,11 @@ export const SETTINGS: UiSetting[] = [
     key: SETTINGS_KEYS.NOTIFICATIONS_CONSUMER_SUPPRESS_ON_DASHBOARD,
     type: 'boolean',
     default: true,
+  },
+  {
+    key: SETTINGS_KEYS.SPLIT_PDF_ENABLED,
+    type: 'boolean',
+    default: null,
   },
   {
     key: SETTINGS_KEYS.NOTES_ENABLED,

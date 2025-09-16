@@ -2,6 +2,53 @@
   margin-top: -3px;
 }
 
+.split-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-left: 0;
+
+  label {
+    margin: 0;
+    line-height: 1;
+  }
+
+  .form-check-input {
+    width: 2.75rem;
+    height: 1.5rem;
+    border-radius: 999px;
+    position: relative;
+    background-size: 1.25rem 1.25rem;
+    margin-left: 0;
+    margin-top: 0;
+    float: none;
+  }
+
+  .form-check-input:not(:checked) {
+    background-color: transparent;
+    border: 2px solid #22c55e;
+    background-image: none;
+    transition: border-color 0.15s ease-in-out, background-color 0.15s ease-in-out;
+  }
+
+  .form-check-input:not(:checked)::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 4px;
+    width: 0.85rem;
+    height: 0.85rem;
+    border-radius: 999px;
+    background-color: #6b7280;
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+
+  .form-check-input:not(:checked):focus {
+    border-color: #22c55e;
+  }
+}
+
 .btn-outline-dark {
   --bs-btn-border-color: var(--bs-border-color-translucent);
 }

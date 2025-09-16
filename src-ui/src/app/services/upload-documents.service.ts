@@ -1,15 +1,15 @@
 import { HttpEventType } from '@angular/common/http'
 import { Injectable, inject } from '@angular/core'
-import { BehaviorSubject, Subscription } from 'rxjs'
+import { BehaviorSubject, Subscription, first } from 'rxjs'
+import { SETTINGS_KEYS } from '../data/ui-settings'
 import { ConfigService } from './config.service'
 import { DocumentService } from './rest/document.service'
 import {
   FileStatusPhase,
   WebsocketStatusService,
 } from './websocket-status.service'
-
-const SPLIT_PDF_ON_UPLOAD_STORAGE_KEY =
-  'paperless-ngx:upload:split-pdf-on-upload'
+import { SettingsService } from './settings.service'
+import { ToastService } from './toast.service'
 
 @Injectable({
   providedIn: 'root',
@@ -18,6 +18,8 @@ export class UploadDocumentsService {
   private documentService = inject(DocumentService)
   private websocketStatusService = inject(WebsocketStatusService)
   private configService = inject(ConfigService)
+  private settingsService = inject(SettingsService)
+  private toastService = inject(ToastService)
 
   private uploadSubscriptions: Array<Subscription> = []
   private splitPdfOnUpload = false
@@ -26,15 +28,21 @@ export class UploadDocumentsService {
   splitPdfOnUpload$ = this.splitPdfOnUploadSubject.asObservable()
 
   constructor() {
-    const persistedPreference = this.getPersistedSplitPreference()
-    if (persistedPreference !== null) {
+    const persistedPreference = this.settingsService.get(
+      SETTINGS_KEYS.SPLIT_PDF_ENABLED
+    )
+    if (persistedPreference !== null && persistedPreference !== undefined) {
       this.setSplitPdfOnUploadInternal(persistedPreference, false)
     }
 
     this.configService.getConfig().subscribe((c) => {
-      const storedPreference = this.getPersistedSplitPreference()
+      const storedPreference = this.settingsService.get(
+        SETTINGS_KEYS.SPLIT_PDF_ENABLED
+      )
       const effectivePreference =
-        storedPreference !== null ? storedPreference : !!c.split_pdf_on_upload
+        storedPreference !== null && storedPreference !== undefined
+          ? storedPreference
+          : !!c.split_pdf_on_upload
       this.setSplitPdfOnUploadInternal(effectivePreference, false)
     })
   }
@@ -102,22 +110,18 @@ export class UploadDocumentsService {
     }
   }
 
-  private getPersistedSplitPreference(): boolean | null {
-    const storedValue = localStorage.getItem(
-      SPLIT_PDF_ON_UPLOAD_STORAGE_KEY
-    )
-
-    if (storedValue === null) {
-      return null
-    }
-
-    return storedValue === 'true'
-  }
-
   private persistSplitPreference(split: boolean) {
-    localStorage.setItem(
-      SPLIT_PDF_ON_UPLOAD_STORAGE_KEY,
-      split ? 'true' : 'false'
-    )
+    this.settingsService.set(SETTINGS_KEYS.SPLIT_PDF_ENABLED, split)
+    this.settingsService
+      .storeSettings()
+      .pipe(first())
+      .subscribe({
+        error: (error) => {
+          this.toastService.showError(
+            $localize`An error occurred while saving your split PDF preference.`,
+            error
+          )
+        },
+      })
   }
 }
