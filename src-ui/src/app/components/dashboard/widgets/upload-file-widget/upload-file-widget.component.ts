@@ -1,5 +1,5 @@
 import { NgClass, NgTemplateOutlet } from '@angular/common'
-import { Component, QueryList, ViewChildren, inject, OnInit } from '@angular/core'
+import { Component, OnDestroy, QueryList, ViewChildren, inject } from '@angular/core'
 import { RouterModule } from '@angular/router'
 import {
   NgbAlert,
@@ -13,7 +13,6 @@ import { SETTINGS_KEYS } from 'src/app/data/ui-settings'
 import { IfPermissionsDirective } from 'src/app/directives/if-permissions.directive'
 import { SettingsService } from 'src/app/services/settings.service'
 import { UploadDocumentsService } from 'src/app/services/upload-documents.service'
-import { ConfigService } from 'src/app/services/config.service'
 import {
   FileStatus,
   FileStatusPhase,
@@ -41,26 +40,26 @@ import { FormsModule } from '@angular/forms'
 })
 export class UploadFileWidgetComponent
   extends ComponentWithPermissions
-  implements OnInit
+  implements OnDestroy
 {
   private websocketStatusService = inject(WebsocketStatusService)
   private uploadDocumentsService = inject(UploadDocumentsService)
-  private configService = inject(ConfigService)
   settingsService = inject(SettingsService)
 
   splitOnUpload = false
+  private splitOnUploadSubscription =
+    this.uploadDocumentsService.splitPdfOnUpload$.subscribe((value) => {
+      this.splitOnUpload = value
+    })
 
   @ViewChildren(NgbAlert) alerts: QueryList<NgbAlert>
 
-  ngOnInit() {
-    this.configService.getConfig().subscribe((c) => {
-      this.splitOnUpload = !!c.split_pdf_on_upload
-      this.uploadDocumentsService.setSplitPdfOnUpload(this.splitOnUpload)
-    })
-  }
-
   onSplitOnUploadChange() {
     this.uploadDocumentsService.setSplitPdfOnUpload(this.splitOnUpload)
+  }
+
+  ngOnDestroy(): void {
+    this.splitOnUploadSubscription.unsubscribe()
   }
 
   getStatus() {

@@ -17,12 +17,12 @@ import {
 import { ConfigService } from './config.service'
 import { of } from 'rxjs'
 
-describe('UploadDocumentsService', () => {
-  let httpTestingController: HttpTestingController
-  let uploadDocumentsService: UploadDocumentsService
-  let websocketStatusService: WebsocketStatusService
+const STORAGE_KEY = 'paperless-ngx:upload:split-pdf-on-upload'
 
+describe('UploadDocumentsService', () => {
   beforeEach(() => {
+    localStorage.clear()
+
     TestBed.configureTestingModule({
       imports: [],
       providers: [
@@ -36,17 +36,16 @@ describe('UploadDocumentsService', () => {
         provideHttpClientTesting(),
       ],
     })
-
-    httpTestingController = TestBed.inject(HttpTestingController)
-    uploadDocumentsService = TestBed.inject(UploadDocumentsService)
-    websocketStatusService = TestBed.inject(WebsocketStatusService)
   })
 
   afterEach(() => {
-    httpTestingController.verify()
+    TestBed.inject(HttpTestingController).verify()
   })
 
   it('calls post_document api endpoint on upload', () => {
+    const uploadDocumentsService = TestBed.inject(UploadDocumentsService)
+    const httpTestingController = TestBed.inject(HttpTestingController)
+
     const file = new File(
       [new Blob(['testing'], { type: 'application/pdf' })],
       'file.pdf'
@@ -62,6 +61,9 @@ describe('UploadDocumentsService', () => {
   })
 
   it('passes split preference', () => {
+    const uploadDocumentsService = TestBed.inject(UploadDocumentsService)
+    const httpTestingController = TestBed.inject(HttpTestingController)
+
     const file = new File(
       [new Blob(['testing'], { type: 'application/pdf' })],
       'file.pdf'
@@ -76,6 +78,10 @@ describe('UploadDocumentsService', () => {
   })
 
   it('updates progress during upload and failure', () => {
+    const uploadDocumentsService = TestBed.inject(UploadDocumentsService)
+    const websocketStatusService = TestBed.inject(WebsocketStatusService)
+    const httpTestingController = TestBed.inject(HttpTestingController)
+
     const file = new File(
       [new Blob(['testing'], { type: 'application/pdf' })],
       'file.pdf'
@@ -110,6 +116,10 @@ describe('UploadDocumentsService', () => {
   })
 
   it('updates progress on failure', () => {
+    const uploadDocumentsService = TestBed.inject(UploadDocumentsService)
+    const websocketStatusService = TestBed.inject(WebsocketStatusService)
+    const httpTestingController = TestBed.inject(HttpTestingController)
+
     const file = new File(
       [new Blob(['testing'], { type: 'application/pdf' })],
       'file.pdf'
@@ -153,5 +163,37 @@ describe('UploadDocumentsService', () => {
     expect(
       websocketStatusService.getConsumerStatus(FileStatusPhase.FAILED)
     ).toHaveLength(2)
+  })
+
+  it('persists split preference changes', () => {
+    const uploadDocumentsService = TestBed.inject(UploadDocumentsService)
+
+    uploadDocumentsService.setSplitPdfOnUpload(true)
+    expect(localStorage.getItem(STORAGE_KEY)).toEqual('true')
+
+    uploadDocumentsService.setSplitPdfOnUpload(false)
+    expect(localStorage.getItem(STORAGE_KEY)).toEqual('false')
+  })
+
+  it('restores persisted preference on initialization', () => {
+    localStorage.setItem(STORAGE_KEY, 'true')
+
+    const uploadDocumentsService = TestBed.inject(UploadDocumentsService)
+    const httpTestingController = TestBed.inject(HttpTestingController)
+
+    const file = new File(
+      [new Blob(['testing'], { type: 'application/pdf' })],
+      'file.pdf'
+    )
+
+    uploadDocumentsService.uploadFile(file)
+
+    const req = httpTestingController.match(
+      `${environment.apiBaseUrl}documents/post_document/`
+    )
+
+    expect(req[0].request.body.get('split_pdf')).toEqual('true')
+
+    req[0].flush('123-456')
   })
 })
