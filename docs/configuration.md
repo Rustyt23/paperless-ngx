@@ -276,7 +276,7 @@ read/write its contents before you start Paperless.
     within the container. Change the local consumption directory in the
     docker-compose.yml file instead.
 
-    Defaults to "../consume/", relative to the "src" directory.
+    Defaults to "/usr/src/paperless/consume".
 
 #### [`PAPERLESS_DATA_DIR=<path>`](#PAPERLESS_DATA_DIR) {#PAPERLESS_DATA_DIR}
 

@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core'
 import { Observable, first, map } from 'rxjs'
 import { environment } from 'src/environments/environment'
 import { PaperlessConfig } from '../data/paperless-config'
+import { ObjectWithId } from '../data/object-with-id'
 
 @Injectable({
   providedIn: 'root',
@@ -19,7 +20,9 @@ export class ConfigService {
     )
   }
 
-  saveConfig(config: PaperlessConfig): Observable<PaperlessConfig> {
+  saveConfig(
+    config: Partial<PaperlessConfig> & ObjectWithId
+  ): Observable<PaperlessConfig> {
     // dont pass string
     if (typeof config.app_logo === 'string') delete config.app_logo
     return this.http

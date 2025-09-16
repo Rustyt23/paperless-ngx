@@ -1,5 +1,6 @@
 import filecmp
 import shutil
+import tempfile
 from pathlib import Path
 from threading import Thread
 from time import sleep
@@ -68,6 +69,14 @@ class ConsumerThreadMixin(DocumentConsumeDelayMixin):
 
         super().tearDown()
 
+    def assert_staged_document(self, staged_path: Path, expected_name: str):
+        staging_root = Path(settings.SCRATCH_DIR) / "consume" / "staging"
+        self.assertTrue(
+            staging_root in staged_path.parents,
+            f"{staged_path} is not within staging root {staging_root}",
+        )
+        self.assertEqual(staged_path.name, expected_name)
+
     def wait_for_task_mock_call(self, expected_call_count=1):
         n = 0
         while n < 50:
@@ -124,7 +133,8 @@ class TestConsumer(DirectoriesMixin, ConsumerThreadMixin, TransactionTestCase):
 
         input_doc, _ = self.get_last_consume_delay_call_args()
 
-        self.assertEqual(input_doc.original_file, f)
+        self.assert_staged_document(input_doc.original_file, f.name)
+        self.assertFalse(f.exists())
 
     def test_consume_file_invalid_ext(self):
         self.t_start()
@@ -145,7 +155,7 @@ class TestConsumer(DirectoriesMixin, ConsumerThreadMixin, TransactionTestCase):
 
         input_doc, _ = self.get_last_consume_delay_call_args()
 
-        self.assertEqual(input_doc.original_file, f)
+        self.assert_staged_document(input_doc.original_file, f.name)
 
     @mock.patch("documents.management.commands.document_consumer.logger.error")
     def test_slow_write_pdf(self, error_logger):
@@ -165,7 +175,7 @@ class TestConsumer(DirectoriesMixin, ConsumerThreadMixin, TransactionTestCase):
 
         input_doc, _ = self.get_last_consume_delay_call_args()
 
-        self.assertEqual(input_doc.original_file, fname)
+        self.assert_staged_document(input_doc.original_file, fname.name)
 
     @mock.patch("documents.management.commands.document_consumer.logger.error")
     def test_slow_write_and_move(self, error_logger):
@@ -185,7 +195,7 @@ class TestConsumer(DirectoriesMixin, ConsumerThreadMixin, TransactionTestCase):
 
         input_doc, _ = self.get_last_consume_delay_call_args()
 
-        self.assertEqual(input_doc.original_file, fname2)
+        self.assert_staged_document(input_doc.original_file, fname2.name)
 
         error_logger.assert_not_called()
 
@@ -204,7 +214,7 @@ class TestConsumer(DirectoriesMixin, ConsumerThreadMixin, TransactionTestCase):
 
         input_doc, _ = self.get_last_consume_delay_call_args()
 
-        self.assertEqual(input_doc.original_file, fname)
+        self.assert_staged_document(input_doc.original_file, fname.name)
 
         # assert that we have an error logged with this invalid file.
         error_logger.assert_called_once()
@@ -254,6 +264,76 @@ class TestConsumer(DirectoriesMixin, ConsumerThreadMixin, TransactionTestCase):
             consumed_files.append(input_doc.original_file.name)
 
         self.assertCountEqual(consumed_files, ["my_file.pdf", "my_second_file.pdf"])
+
+    def test_consume_directory_with_pdfs(self):
+        self.t_start()
+
+        source_dir = Path(tempfile.mkdtemp())
+        nested_dir = source_dir / "nested"
+        nested_dir.mkdir()
+
+        shutil.copy(self.sample_file, source_dir / "outer.pdf")
+        shutil.copy(self.sample_file, nested_dir / "inner.pdf")
+        (nested_dir / "notes.txt").write_text("skip me")
+
+        target_dir = Path(self.dirs.consumption_dir) / "incoming"
+        shutil.move(str(source_dir), target_dir)
+
+        self.wait_for_task_mock_call(expected_call_count=2)
+
+        consumed_paths = [
+            input_doc.original_file for input_doc, _ in self.get_all_consume_delay_call_args()
+        ]
+
+        pdf_paths = [path for path in consumed_paths if path.suffix.lower() == ".pdf"]
+        for path in pdf_paths:
+            self.assert_staged_document(path, path.name)
+
+        self.assertCountEqual(
+            [path.name for path in pdf_paths],
+            ["outer.pdf", "inner.pdf"],
+        )
+
+    @override_settings(CONSUMER_SPLIT_PDF_ON_UPLOAD=True)
+    def test_split_pdf_when_enabled(self):
+        self.t_start()
+
+        source = Path(__file__).parent / "samples" / "double-sided-even.pdf"
+        target = Path(self.dirs.consumption_dir) / "splitme.pdf"
+        shutil.copy(source, target)
+
+        self.wait_for_task_mock_call(expected_call_count=2)
+
+        self.assertEqual(self.consume_file_mock.call_count, 2)
+
+        staged_paths = [
+            input_doc.original_file for input_doc, _ in self.get_all_consume_delay_call_args()
+        ]
+
+        for path in staged_paths:
+            self.assert_staged_document(path, path.name)
+
+        self.assertCountEqual(
+            [path.name for path in staged_paths],
+            ["splitme__page-00001.pdf", "splitme__page-00002.pdf"],
+        )
+        self.assertFalse(target.exists())
+
+    @override_settings(CONSUMER_SPLIT_PDF_ON_UPLOAD=True)
+    def test_skip_resplitting_fragment(self):
+        self.t_start()
+
+        source = Path(__file__).parent / "samples" / "double-sided-even.pdf"
+        target = Path(self.dirs.consumption_dir) / "receipt__page-00001.pdf"
+        shutil.copy(source, target)
+
+        self.wait_for_task_mock_call(expected_call_count=1)
+
+        self.consume_file_mock.assert_called_once()
+
+        input_doc, _ = self.get_last_consume_delay_call_args()
+        self.assert_staged_document(input_doc.original_file, target.name)
+        self.assertEqual(input_doc.original_file.name, target.name)
 
     def test_is_ignored(self):
         test_paths = [
@@ -402,7 +482,7 @@ class TestConsumerTags(DirectoriesMixin, ConsumerThreadMixin, TransactionTestCas
 
         input_doc, overrides = self.get_last_consume_delay_call_args()
 
-        self.assertEqual(input_doc.original_file, f)
+        self.assert_staged_document(input_doc.original_file, f.name)
 
         # assertCountEqual has a bad name, but test that the first
         # sequence contains the same elements as second, regardless of

@@ -293,7 +293,7 @@ LOGGING_DIR = __get_path("PAPERLESS_LOGGING_DIR", DATA_DIR / "log")
 
 CONSUMPTION_DIR = __get_path(
     "PAPERLESS_CONSUMPTION_DIR",
-    BASE_DIR.parent / "consume",
+    Path("/usr/src/paperless/consume"),
 )
 
 EXPORT_DIR = __get_path(
@@ -1029,7 +1029,7 @@ CONSUMER_IGNORE_PATTERNS = list(
     json.loads(
         os.getenv(
             "PAPERLESS_CONSUMER_IGNORE_PATTERNS",
-            '[".DS_Store", ".DS_STORE", "._*", ".stfolder/*", ".stversions/*", ".localized/*", "desktop.ini", "@eaDir/*", "Thumbs.db"]',
+            '[".DS_Store", ".DS_STORE", "._*", "*.part", "*.tmp", ".*", ".stfolder/*", ".stversions/*", ".localized/*", "desktop.ini", "@eaDir/*", "Thumbs.db"]',
         ),
     ),
 )

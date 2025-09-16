@@ -13,8 +13,10 @@ import { PermissionsService } from 'src/app/services/permissions.service'
 import { SettingsService } from 'src/app/services/settings.service'
 import { ToastService } from 'src/app/services/toast.service'
 import { UploadDocumentsService } from 'src/app/services/upload-documents.service'
+import { ConfigService } from 'src/app/services/config.service'
 import { ToastsComponent } from '../common/toasts/toasts.component'
 import { FileDropComponent } from './file-drop.component'
+import { of } from 'rxjs'
 
 describe('FileDropComponent', () => {
   let component: FileDropComponent
@@ -23,13 +25,21 @@ describe('FileDropComponent', () => {
   let toastService: ToastService
   let settingsService: SettingsService
   let uploadDocumentsService: UploadDocumentsService
+  let configServiceMock: { getConfig: jest.Mock; saveConfig: jest.Mock }
 
   beforeEach(() => {
+    configServiceMock = {
+      getConfig: jest
+        .fn()
+        .mockReturnValue(of({ id: 1, split_pdf_on_upload: false })),
+      saveConfig: jest.fn(),
+    }
     TestBed.configureTestingModule({
       imports: [FileDropComponent, ToastsComponent],
       providers: [
         provideHttpClient(withInterceptorsFromDi()),
         provideHttpClientTesting(),
+        { provide: ConfigService, useValue: configServiceMock },
       ],
     }).compileComponents()
 
@@ -232,7 +242,9 @@ describe('FileDropComponent', () => {
   }))
 
   it('should resolve a single file when entry isFile', () => {
-    const mockFile = new File(['data'], 'test.txt', { type: 'text/plain' })
+    const mockFile = new File(['data'], 'test.pdf', {
+      type: 'application/pdf',
+    })
     const mockEntry = {
       isFile: true,
       isDirectory: false,
@@ -247,8 +259,12 @@ describe('FileDropComponent', () => {
   })
 
   it('should resolve all files in a flat directory', async () => {
-    const file1 = new File(['data'], 'file1.txt')
-    const file2 = new File(['data'], 'file2.txt')
+    const file1 = new File(['data'], 'file1.pdf', {
+      type: 'application/pdf',
+    })
+    const file2 = new File(['data'], 'file2.pdf', {
+      type: 'application/pdf',
+    })
 
     const mockFileEntry1 = {
       isFile: true,
@@ -286,13 +302,49 @@ describe('FileDropComponent', () => {
     const mockEntry = {
       isFile: false,
       isDirectory: false,
-      file: (cb: (f: File) => void) => cb(new File([], '')),
+      file: (cb: (f: File) => void) =>
+        cb(new File([], 'ignored.txt', { type: 'text/plain' })),
     } as unknown as FileSystemEntry
     return (component as any)
       .traverseFileTree(mockEntry)
       .then((result: File[]) => {
         expect(result).toEqual([])
       })
+  })
+
+  it('should ignore non-pdf files when traversing directories', async () => {
+    const pdfFile = new File(['data'], 'doc.pdf', { type: 'application/pdf' })
+    const textFile = new File(['data'], 'notes.txt', { type: 'text/plain' })
+
+    const pdfEntry = {
+      isFile: true,
+      isDirectory: false,
+      file: (cb: (f: File) => void) => cb(pdfFile),
+    } as unknown as FileSystemFileEntry
+
+    const textEntry = {
+      isFile: true,
+      isDirectory: false,
+      file: (cb: (f: File) => void) => cb(textFile),
+    } as unknown as FileSystemFileEntry
+
+    let readCount = 0
+    const mockDirEntry = {
+      isFile: false,
+      isDirectory: true,
+      createReader: () => ({
+        readEntries: (cb: (batch: FileSystemEntry[]) => void) => {
+          if (readCount++ === 0) {
+            cb([pdfEntry, textEntry])
+          } else {
+            cb([])
+          }
+        },
+      }),
+    } as unknown as FileSystemDirectoryEntry
+
+    const result = await (component as any).traverseFileTree(mockDirEntry)
+    expect(result).toEqual([pdfFile])
   })
 
   it('should ignore events if disabled', fakeAsync(() => {

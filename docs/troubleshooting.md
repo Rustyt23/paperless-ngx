@@ -138,7 +138,7 @@ command:
 You might encounter errors such as:
 
 ```shell-session
-The following error occurred while consuming document.pdf: [Errno 13] Permission denied: '/usr/src/paperless/src/../consume/document.pdf'
+The following error occurred while consuming document.pdf: [Errno 13] Permission denied: '/usr/src/paperless/consume/document.pdf'
 ```
 
 This happens when paperless does not have permission to delete files
@@ -244,7 +244,7 @@ default) to check for documents, try adjusting the
 You might find messages like these in your log files:
 
 ```
-[ERROR] [paperless.management.consumer] Timeout while waiting on file /usr/src/paperless/src/../consume/SCN_0001.pdf to remain unmodified.
+[ERROR] [paperless.management.consumer] Timeout while waiting on file /usr/src/paperless/consume/SCN_0001.pdf to remain unmodified.
 ```
 
 This indicates paperless timed out while waiting for the file to be
@@ -261,7 +261,7 @@ completely written to the consume folder. Adjusting
 You might find messages like these in your log files:
 
 ```
-[WARNING] [paperless.management.consumer] Not consuming file /usr/src/paperless/src/../consume/SCN_0001.pdf: OS reports file as busy still
+[WARNING] [paperless.management.consumer] Not consuming file /usr/src/paperless/consume/SCN_0001.pdf: OS reports file as busy still
 ```
 
 This indicates paperless was unable to open the file, as the OS reported

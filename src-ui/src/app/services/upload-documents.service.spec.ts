@@ -15,23 +15,32 @@ import {
   WebsocketStatusService,
 } from './websocket-status.service'
 import { ConfigService } from './config.service'
-import { of } from 'rxjs'
-
-const STORAGE_KEY = 'paperless-ngx:upload:split-pdf-on-upload'
+import { Subject, of } from 'rxjs'
 
 describe('UploadDocumentsService', () => {
+  let configServiceMock: {
+    getConfig: jest.Mock
+    saveConfig: jest.Mock
+  }
+
   beforeEach(() => {
-    localStorage.clear()
+    configServiceMock = {
+      getConfig: jest
+        .fn()
+        .mockReturnValue(of({ id: 1, split_pdf_on_upload: false })),
+      saveConfig: jest
+        .fn()
+        .mockImplementation(({ id, split_pdf_on_upload }) =>
+          of({ id, split_pdf_on_upload })
+        ),
+    }
 
     TestBed.configureTestingModule({
       imports: [],
       providers: [
         UploadDocumentsService,
         WebsocketStatusService,
-        {
-          provide: ConfigService,
-          useValue: { getConfig: () => of({ split_pdf_on_upload: false }) },
-        },
+        { provide: ConfigService, useValue: configServiceMock },
         provideHttpClient(withInterceptorsFromDi()),
         provideHttpClientTesting(),
       ],
@@ -64,11 +73,19 @@ describe('UploadDocumentsService', () => {
     const uploadDocumentsService = TestBed.inject(UploadDocumentsService)
     const httpTestingController = TestBed.inject(HttpTestingController)
 
+    configServiceMock.saveConfig.mockReturnValue(
+      of({ id: 1, split_pdf_on_upload: true })
+    )
+
     const file = new File(
       [new Blob(['testing'], { type: 'application/pdf' })],
       'file.pdf'
     )
     uploadDocumentsService.setSplitPdfOnUpload(true)
+    expect(configServiceMock.saveConfig).toHaveBeenCalledWith({
+      id: 1,
+      split_pdf_on_upload: true,
+    })
     uploadDocumentsService.uploadFile(file)
     const req = httpTestingController.match(
       `${environment.apiBaseUrl}documents/post_document/`
@@ -169,14 +186,22 @@ describe('UploadDocumentsService', () => {
     const uploadDocumentsService = TestBed.inject(UploadDocumentsService)
 
     uploadDocumentsService.setSplitPdfOnUpload(true)
-    expect(localStorage.getItem(STORAGE_KEY)).toEqual('true')
+    expect(configServiceMock.saveConfig).toHaveBeenCalledWith({
+      id: 1,
+      split_pdf_on_upload: true,
+    })
 
     uploadDocumentsService.setSplitPdfOnUpload(false)
-    expect(localStorage.getItem(STORAGE_KEY)).toEqual('false')
+    expect(configServiceMock.saveConfig).toHaveBeenLastCalledWith({
+      id: 1,
+      split_pdf_on_upload: false,
+    })
   })
 
-  it('restores persisted preference on initialization', () => {
-    localStorage.setItem(STORAGE_KEY, 'true')
+  it('initializes split preference from config', () => {
+    configServiceMock.getConfig.mockReturnValue(
+      of({ id: 1, split_pdf_on_upload: true })
+    )
 
     const uploadDocumentsService = TestBed.inject(UploadDocumentsService)
     const httpTestingController = TestBed.inject(HttpTestingController)
@@ -195,5 +220,26 @@ describe('UploadDocumentsService', () => {
     expect(req[0].request.body.get('split_pdf')).toEqual('true')
 
     req[0].flush('123-456')
+  })
+
+  it('persists pending preference once config loads', () => {
+    const configSubject = new Subject<{ id: number; split_pdf_on_upload: boolean }>()
+    configServiceMock.getConfig.mockReturnValue(configSubject.asObservable())
+    configServiceMock.saveConfig.mockReturnValue(
+      of({ id: 2, split_pdf_on_upload: true })
+    )
+
+    const uploadDocumentsService = TestBed.inject(UploadDocumentsService)
+
+    uploadDocumentsService.setSplitPdfOnUpload(true)
+    expect(configServiceMock.saveConfig).not.toHaveBeenCalled()
+
+    configSubject.next({ id: 2, split_pdf_on_upload: false })
+    configSubject.complete()
+
+    expect(configServiceMock.saveConfig).toHaveBeenCalledWith({
+      id: 2,
+      split_pdf_on_upload: true,
+    })
   })
 })

@@ -13,7 +13,7 @@
 
 # Paths and folders
 
-#PAPERLESS_CONSUMPTION_DIR=../consume
+#PAPERLESS_CONSUMPTION_DIR=/usr/src/paperless/consume
 #PAPERLESS_DATA_DIR=../data
 #PAPERLESS_EMPTY_TRASH_DIR=
 #PAPERLESS_MEDIA_ROOT=../media
