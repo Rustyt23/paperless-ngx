@@ -61,13 +61,13 @@ account. The script essentially automatically performs the steps described in [D
     Find the line that specifies where to mount the directory, e.g.:
 
     ```yaml
-    - ./consume:/usr/src/paperless/consume
+    - ./docker/compose/consume:/usr/src/paperless/consume:rw
     ```
 
     Replace the part _before_ the colon with a local directory of your choice:
 
     ```yaml
-    - /home/jonaswinkler/paperless-inbox:/usr/src/paperless/consume
+    - /home/jonaswinkler/paperless-inbox:/usr/src/paperless/consume:rw
     ```
 
     You may also want to change the default port that the webserver will

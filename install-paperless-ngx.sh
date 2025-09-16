@@ -188,10 +188,10 @@ echo ""
 echo "CAUTION: You must specify an absolute path starting with / or a relative "
 echo "path starting with ./ here. Examples:"
 echo "  /mnt/consume"
-echo "  ./consume"
+echo "  ./docker/compose/consume"
 echo ""
 
-ask_docker_folder "Consume folder" "$TARGET_FOLDER/consume"
+ask_docker_folder "Consume folder" "$TARGET_FOLDER/docker/compose/consume"
 CONSUME_FOLDER=$ask_result
 
 echo ""
@@ -358,7 +358,7 @@ read -r -a install_langs_array <<< "${install_langs}"
 
 sed -i "s/- \"8000:8000\"/- \"$PORT:8000\"/g" docker-compose.yml
 
-sed -i "s#- \./consume:/usr/src/paperless/consume#- $CONSUME_FOLDER:/usr/src/paperless/consume#g" docker-compose.yml
+sed -i "s#- \./docker/compose/consume:/usr/src/paperless/consume:rw#- $CONSUME_FOLDER:/usr/src/paperless/consume:rw#g" docker-compose.yml
 
 if [[ -n $MEDIA_FOLDER ]] ; then
 	sed -i "s#- media:/usr/src/paperless/media#- $MEDIA_FOLDER:/usr/src/paperless/media#g" docker-compose.yml
