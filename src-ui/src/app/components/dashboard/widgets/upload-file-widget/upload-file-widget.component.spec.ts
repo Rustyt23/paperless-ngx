@@ -10,10 +10,13 @@ import { By } from '@angular/platform-browser'
 import { RouterTestingModule } from '@angular/router/testing'
 import { NgxBootstrapIconsModule, allIcons } from 'ngx-bootstrap-icons'
 import { routes } from 'src/app/app-routing.module'
+import { SETTINGS_KEYS } from 'src/app/data/ui-settings'
 import { PermissionsGuard } from 'src/app/guards/permissions.guard'
 import { PermissionsService } from 'src/app/services/permissions.service'
 import { UploadDocumentsService } from 'src/app/services/upload-documents.service'
 import { ConfigService } from 'src/app/services/config.service'
+import { SettingsService } from 'src/app/services/settings.service'
+import { ToastService } from 'src/app/services/toast.service'
 import {
   FileStatus,
   FileStatusPhase,
@@ -39,14 +42,27 @@ const DEFAULT_STATUSES = [
   new FileStatus(),
   new FileStatus(),
 ]
-const STORAGE_KEY = 'paperless-ngx:upload:split-pdf-on-upload'
+class SettingsServiceStub {
+  private values = new Map<string, any>()
+
+  get(key: string) {
+    return this.values.has(key) ? this.values.get(key) : null
+  }
+
+  set(key: string, value: any) {
+    this.values.set(key, value)
+  }
+
+  storeSettings() {
+    return of({})
+  }
+}
 
 describe('UploadFileWidgetComponent', () => {
   let component: UploadFileWidgetComponent
   let fixture: ComponentFixture<UploadFileWidgetComponent>
 
   beforeEach(async () => {
-    localStorage.clear()
     TestBed.configureTestingModule({
       imports: [
         RouterTestingModule.withRoutes(routes),
@@ -63,9 +79,17 @@ describe('UploadFileWidgetComponent', () => {
         },
         provideHttpClient(withInterceptorsFromDi()),
         provideHttpClientTesting(),
-        {  
+        {
           provide: ConfigService,
           useValue: { getConfig: () => of({ split_pdf_on_upload: false }) },
+        },
+        {
+          provide: SettingsService,
+          useClass: SettingsServiceStub,
+        },
+        {
+          provide: ToastService,
+          useValue: { showError: jest.fn() },
         },
       ],
     }).compileComponents()
@@ -162,7 +186,10 @@ describe('UploadFileWidgetComponent', () => {
   }))
 
   it('should initialize split preference from persistence', () => {
-    localStorage.setItem(STORAGE_KEY, 'true')
+    const settingsService = TestBed.inject(
+      SettingsService
+    ) as unknown as SettingsServiceStub
+    settingsService.set(SETTINGS_KEYS.SPLIT_PDF_ENABLED, true)
     createComponent()
     expect(component.splitOnUpload).toBe(true)
   })

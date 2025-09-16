@@ -2207,6 +2207,11 @@ class UiSettingsView(GenericAPIView):
 
         general_config = GeneralConfig()
 
+        if "split_pdf_enabled" not in ui_settings:
+            ui_settings["split_pdf_enabled"] = (
+                general_config.split_pdf_on_upload
+            )
+
         ui_settings["version"] = version.__full_version_str__
 
         ui_settings["app_title"] = settings.APP_TITLE

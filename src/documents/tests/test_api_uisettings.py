@@ -2,6 +2,7 @@ import json
 
 from django.contrib.auth.models import Permission
 from django.contrib.auth.models import User
+from django.conf import settings
 from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -48,6 +49,7 @@ class TestApiUiSettings(DirectoriesMixin, APITestCase):
                 "update_checking": {
                     "backend_setting": "default",
                 },
+                "split_pdf_enabled": settings.CONSUMER_SPLIT_PDF_ON_UPLOAD,
                 "email_enabled": False,
             },
         )

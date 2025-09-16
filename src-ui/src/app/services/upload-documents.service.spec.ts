@@ -8,6 +8,7 @@ import {
   provideHttpClientTesting,
 } from '@angular/common/http/testing'
 import { TestBed } from '@angular/core/testing'
+import { SETTINGS_KEYS } from '../data/ui-settings'
 import { environment } from 'src/environments/environment'
 import { UploadDocumentsService } from './upload-documents.service'
 import {
@@ -15,14 +16,28 @@ import {
   WebsocketStatusService,
 } from './websocket-status.service'
 import { ConfigService } from './config.service'
+import { SettingsService } from './settings.service'
+import { ToastService } from './toast.service'
 import { of } from 'rxjs'
 
-const STORAGE_KEY = 'paperless-ngx:upload:split-pdf-on-upload'
+class SettingsServiceStub {
+  private values = new Map<string, any>()
+
+  get(key: string) {
+    return this.values.has(key) ? this.values.get(key) : null
+  }
+
+  set(key: string, value: any) {
+    this.values.set(key, value)
+  }
+
+  storeSettings() {
+    return of({})
+  }
+}
 
 describe('UploadDocumentsService', () => {
   beforeEach(() => {
-    localStorage.clear()
-
     TestBed.configureTestingModule({
       imports: [],
       providers: [
@@ -31,6 +46,14 @@ describe('UploadDocumentsService', () => {
         {
           provide: ConfigService,
           useValue: { getConfig: () => of({ split_pdf_on_upload: false }) },
+        },
+        {
+          provide: SettingsService,
+          useClass: SettingsServiceStub,
+        },
+        {
+          provide: ToastService,
+          useValue: { showError: jest.fn() },
         },
         provideHttpClient(withInterceptorsFromDi()),
         provideHttpClientTesting(),
@@ -167,17 +190,28 @@ describe('UploadDocumentsService', () => {
 
   it('persists split preference changes', () => {
     const uploadDocumentsService = TestBed.inject(UploadDocumentsService)
-
+    const settingsService = TestBed.inject(
+      SettingsService
+    ) as unknown as SettingsServiceStub
+    const storeSpy = jest.spyOn(settingsService, 'storeSettings')
     uploadDocumentsService.setSplitPdfOnUpload(true)
-    expect(localStorage.getItem(STORAGE_KEY)).toEqual('true')
-
+    expect(
+      settingsService.get(SETTINGS_KEYS.SPLIT_PDF_ENABLED)
+    ).toEqual(true)
+    expect(storeSpy).toHaveBeenCalled()
+    storeSpy.mockClear()
     uploadDocumentsService.setSplitPdfOnUpload(false)
-    expect(localStorage.getItem(STORAGE_KEY)).toEqual('false')
+    expect(
+      settingsService.get(SETTINGS_KEYS.SPLIT_PDF_ENABLED)
+    ).toEqual(false)
+    expect(storeSpy).toHaveBeenCalled()
   })
 
   it('restores persisted preference on initialization', () => {
-    localStorage.setItem(STORAGE_KEY, 'true')
-
+    const settingsService = TestBed.inject(
+      SettingsService
+    ) as unknown as SettingsServiceStub
+    settingsService.set(SETTINGS_KEYS.SPLIT_PDF_ENABLED, true)
     const uploadDocumentsService = TestBed.inject(UploadDocumentsService)
     const httpTestingController = TestBed.inject(HttpTestingController)
 
