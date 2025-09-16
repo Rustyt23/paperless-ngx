@@ -1,12 +1,15 @@
 import { HttpEventType } from '@angular/common/http'
 import { Injectable, inject } from '@angular/core'
-import { Subscription } from 'rxjs'
+import { BehaviorSubject, Subscription } from 'rxjs'
 import { ConfigService } from './config.service'
 import { DocumentService } from './rest/document.service'
 import {
   FileStatusPhase,
   WebsocketStatusService,
 } from './websocket-status.service'
+
+const SPLIT_PDF_ON_UPLOAD_STORAGE_KEY =
+  'paperless-ngx:upload:split-pdf-on-upload'
 
 @Injectable({
   providedIn: 'root',
@@ -18,15 +21,26 @@ export class UploadDocumentsService {
 
   private uploadSubscriptions: Array<Subscription> = []
   private splitPdfOnUpload = false
+  private splitPdfOnUploadSubject = new BehaviorSubject<boolean>(false)
+
+  splitPdfOnUpload$ = this.splitPdfOnUploadSubject.asObservable()
 
   constructor() {
-    this.configService
-      .getConfig()
-      .subscribe((c) => (this.splitPdfOnUpload = !!c.split_pdf_on_upload))
+    const persistedPreference = this.getPersistedSplitPreference()
+    if (persistedPreference !== null) {
+      this.setSplitPdfOnUploadInternal(persistedPreference, false)
+    }
+
+    this.configService.getConfig().subscribe((c) => {
+      const storedPreference = this.getPersistedSplitPreference()
+      const effectivePreference =
+        storedPreference !== null ? storedPreference : !!c.split_pdf_on_upload
+      this.setSplitPdfOnUploadInternal(effectivePreference, false)
+    })
   }
 
-  public setSplitPdfOnUpload(split: boolean) {
-    this.splitPdfOnUpload = split
+  public setSplitPdfOnUpload(split: boolean, persist: boolean = true) {
+    this.setSplitPdfOnUploadInternal(split, persist)
   }
 
   public uploadFile(file: File, splitPdfOnUpload = this.splitPdfOnUpload) {
@@ -72,5 +86,38 @@ export class UploadDocumentsService {
           this.uploadSubscriptions[file.name]?.complete()
         },
       })
+  }
+
+  private setSplitPdfOnUploadInternal(split: boolean, persist: boolean) {
+    if (this.splitPdfOnUpload === split && !persist) {
+      this.splitPdfOnUploadSubject.next(split)
+      return
+    }
+
+    this.splitPdfOnUpload = split
+    this.splitPdfOnUploadSubject.next(split)
+
+    if (persist) {
+      this.persistSplitPreference(split)
+    }
+  }
+
+  private getPersistedSplitPreference(): boolean | null {
+    const storedValue = localStorage.getItem(
+      SPLIT_PDF_ON_UPLOAD_STORAGE_KEY
+    )
+
+    if (storedValue === null) {
+      return null
+    }
+
+    return storedValue === 'true'
+  }
+
+  private persistSplitPreference(split: boolean) {
+    localStorage.setItem(
+      SPLIT_PDF_ON_UPLOAD_STORAGE_KEY,
+      split ? 'true' : 'false'
+    )
   }
 }

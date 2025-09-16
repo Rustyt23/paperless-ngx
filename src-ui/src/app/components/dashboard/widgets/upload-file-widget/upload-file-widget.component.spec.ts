@@ -39,14 +39,14 @@ const DEFAULT_STATUSES = [
   new FileStatus(),
   new FileStatus(),
 ]
+const STORAGE_KEY = 'paperless-ngx:upload:split-pdf-on-upload'
 
 describe('UploadFileWidgetComponent', () => {
   let component: UploadFileWidgetComponent
   let fixture: ComponentFixture<UploadFileWidgetComponent>
-  let websocketStatusService: WebsocketStatusService
-  let uploadDocumentsService: UploadDocumentsService
 
   beforeEach(async () => {
+    localStorage.clear()
     TestBed.configureTestingModule({
       imports: [
         RouterTestingModule.withRoutes(routes),
@@ -63,22 +63,22 @@ describe('UploadFileWidgetComponent', () => {
         },
         provideHttpClient(withInterceptorsFromDi()),
         provideHttpClientTesting(),
-        {
+        {  
           provide: ConfigService,
           useValue: { getConfig: () => of({ split_pdf_on_upload: false }) },
         },
       ],
     }).compileComponents()
-
-    websocketStatusService = TestBed.inject(WebsocketStatusService)
-    uploadDocumentsService = TestBed.inject(UploadDocumentsService)
-    fixture = TestBed.createComponent(UploadFileWidgetComponent)
-    component = fixture.componentInstance
-
-    fixture.detectChanges()
   })
 
+  function createComponent() {
+    fixture = TestBed.createComponent(UploadFileWidgetComponent)
+    component = fixture.componentInstance
+    fixture.detectChanges()
+  }
+
   it('should support browse files', () => {
+    createComponent()
     const fileInput = fixture.debugElement.query(By.css('input[type="file"]'))
     const clickSpy = jest.spyOn(fileInput.nativeElement, 'click')
     fixture.debugElement
@@ -88,6 +88,8 @@ describe('UploadFileWidgetComponent', () => {
   })
 
   it('should upload files', () => {
+    createComponent()
+    const uploadDocumentsService = TestBed.inject(UploadDocumentsService)
     const uploadSpy = jest.spyOn(uploadDocumentsService, 'uploadFile')
     const file = new File(
       [new Blob(['testing'], { type: 'application/pdf' })],
@@ -106,6 +108,8 @@ describe('UploadFileWidgetComponent', () => {
   })
 
   it('should generate stats summary', () => {
+    createComponent()
+    const websocketStatusService = TestBed.inject(WebsocketStatusService)
     mockConsumerStatuses(websocketStatusService)
     expect(component.getStatusSummary()).toEqual(
       'Processing: 6, Failed: 1, Added: 4'
@@ -113,11 +117,14 @@ describe('UploadFileWidgetComponent', () => {
   })
 
   it('should report an upload progress summary', () => {
+    createComponent()
+    const websocketStatusService = TestBed.inject(WebsocketStatusService)
     mockConsumerStatuses(websocketStatusService)
     expect(component.getTotalUploadProgress()).toEqual(0.75)
   })
 
   it('should change color by status phase', () => {
+    createComponent()
     const processingStatus = new FileStatus()
     processingStatus.phase = FileStatusPhase.WORKING
     expect(component.getStatusColor(processingStatus)).toEqual('primary')
@@ -132,12 +139,16 @@ describe('UploadFileWidgetComponent', () => {
   })
 
   it('should allow dismissing an alert', () => {
+    createComponent()
+    const websocketStatusService = TestBed.inject(WebsocketStatusService)
     const dismissSpy = jest.spyOn(websocketStatusService, 'dismiss')
     component.dismiss(new FileStatus())
     expect(dismissSpy).toHaveBeenCalled()
   })
 
   it('should allow dismissing completed alerts', fakeAsync(() => {
+    createComponent()
+    const websocketStatusService = TestBed.inject(WebsocketStatusService)
     mockConsumerStatuses(websocketStatusService)
     fixture.detectChanges()
     jest
@@ -149,6 +160,19 @@ describe('UploadFileWidgetComponent', () => {
     fixture.detectChanges()
     expect(dismissSpy).toHaveBeenCalledTimes(4)
   }))
+
+  it('should initialize split preference from persistence', () => {
+    localStorage.setItem(STORAGE_KEY, 'true')
+    createComponent()
+    expect(component.splitOnUpload).toBe(true)
+  })
+
+  it('should update when service preference changes', () => {
+    createComponent()
+    const uploadDocumentsService = TestBed.inject(UploadDocumentsService)
+    uploadDocumentsService.setSplitPdfOnUpload(true)
+    expect(component.splitOnUpload).toBe(true)
+  })
 })
 
 function mockConsumerStatuses(consumerStatusService) {
