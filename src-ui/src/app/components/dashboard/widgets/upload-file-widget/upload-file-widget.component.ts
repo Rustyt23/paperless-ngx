@@ -21,6 +21,8 @@ import {
 } from 'src/app/services/websocket-status.service'
 import { WidgetFrameComponent } from '../widget-frame/widget-frame.component'
 import { FormsModule } from '@angular/forms'
+import { first } from 'rxjs'
+import { ToastService } from 'src/app/services/toast.service'
 
 @Component({
   selector: 'pngx-upload-file-widget',
@@ -46,6 +48,7 @@ export class UploadFileWidgetComponent
   private websocketStatusService = inject(WebsocketStatusService)
   private uploadDocumentsService = inject(UploadDocumentsService)
   private configService = inject(ConfigService)
+  private toastService = inject(ToastService)
   settingsService = inject(SettingsService)
 
   splitOnUpload = false
@@ -53,14 +56,49 @@ export class UploadFileWidgetComponent
   @ViewChildren(NgbAlert) alerts: QueryList<NgbAlert>
 
   ngOnInit() {
+    const savedSplitPreference = this.settingsService.get(
+      SETTINGS_KEYS.SPLIT_PDF_ON_UPLOAD
+    )
+
+    if (savedSplitPreference !== null && savedSplitPreference !== undefined) {
+      this.splitOnUpload = savedSplitPreference
+      this.uploadDocumentsService.setSplitPdfOnUpload(this.splitOnUpload)
+    }
+
     this.configService.getConfig().subscribe((c) => {
-      this.splitOnUpload = !!c.split_pdf_on_upload
+      const currentSavedPreference = this.settingsService.get(
+        SETTINGS_KEYS.SPLIT_PDF_ON_UPLOAD
+      )
+
+      if (
+        currentSavedPreference === null ||
+        currentSavedPreference === undefined
+      ) {
+        this.splitOnUpload = !!c.split_pdf_on_upload
+      }
+
       this.uploadDocumentsService.setSplitPdfOnUpload(this.splitOnUpload)
     })
   }
 
   onSplitOnUploadChange() {
     this.uploadDocumentsService.setSplitPdfOnUpload(this.splitOnUpload)
+    this.settingsService.set(
+      SETTINGS_KEYS.SPLIT_PDF_ON_UPLOAD,
+      this.splitOnUpload
+    )
+    this.settingsService
+      .storeSettings()
+      .pipe(first())
+      .subscribe({
+        error: (error) => {
+          this.toastService.showError(
+            $localize`An error occurred while saving settings.`,
+            error
+          )
+          console.warn(error)
+        },
+      })
   }
 
   getStatus() {

@@ -21,6 +21,22 @@ import {
 } from 'src/app/services/websocket-status.service'
 import { UploadFileWidgetComponent } from './upload-file-widget.component'
 import { of } from 'rxjs'
+import { SettingsService } from 'src/app/services/settings.service'
+import { SETTINGS_KEYS } from 'src/app/data/ui-settings'
+
+class SettingsServiceStub {
+  private values = new Map<string, any>([[SETTINGS_KEYS.SLIM_SIDEBAR, false]])
+
+  get = jest.fn((key: string) => {
+    return this.values.has(key) ? this.values.get(key) : null
+  })
+
+  set = jest.fn((key: string, value: any) => {
+    this.values.set(key, value)
+  })
+
+  storeSettings = jest.fn(() => of({ success: true }))
+}
 
 const FAILED_STATUSES = [new FileStatus()]
 const WORKING_STATUSES = [new FileStatus(), new FileStatus()]
@@ -45,6 +61,7 @@ describe('UploadFileWidgetComponent', () => {
   let fixture: ComponentFixture<UploadFileWidgetComponent>
   let websocketStatusService: WebsocketStatusService
   let uploadDocumentsService: UploadDocumentsService
+  let settingsService: SettingsServiceStub
 
   beforeEach(async () => {
     TestBed.configureTestingModule({
@@ -67,11 +84,13 @@ describe('UploadFileWidgetComponent', () => {
           provide: ConfigService,
           useValue: { getConfig: () => of({ split_pdf_on_upload: false }) },
         },
+        { provide: SettingsService, useClass: SettingsServiceStub },
       ],
     }).compileComponents()
 
     websocketStatusService = TestBed.inject(WebsocketStatusService)
     uploadDocumentsService = TestBed.inject(UploadDocumentsService)
+    settingsService = TestBed.inject(SettingsService) as unknown as SettingsServiceStub
     fixture = TestBed.createComponent(UploadFileWidgetComponent)
     component = fixture.componentInstance
 
@@ -149,6 +168,37 @@ describe('UploadFileWidgetComponent', () => {
     fixture.detectChanges()
     expect(dismissSpy).toHaveBeenCalledTimes(4)
   }))
+
+  it('persists split preference changes', () => {
+    const setSpy = jest.spyOn(settingsService, 'set')
+    const storeSpy = jest.spyOn(settingsService, 'storeSettings')
+    const uploadSpy = jest.spyOn(
+      uploadDocumentsService,
+      'setSplitPdfOnUpload'
+    )
+
+    component.splitOnUpload = true
+    component.onSplitOnUploadChange()
+
+    expect(uploadSpy).toHaveBeenCalledWith(true)
+    expect(setSpy).toHaveBeenCalledWith(
+      SETTINGS_KEYS.SPLIT_PDF_ON_UPLOAD,
+      true
+    )
+    expect(storeSpy).toHaveBeenCalled()
+  })
+
+  it('uses saved split preference when available', () => {
+    fixture.destroy()
+    settingsService.set(SETTINGS_KEYS.SPLIT_PDF_ON_UPLOAD, true)
+
+    const newFixture = TestBed.createComponent(UploadFileWidgetComponent)
+    const newComponent = newFixture.componentInstance
+
+    newFixture.detectChanges()
+
+    expect(newComponent.splitOnUpload).toBe(true)
+  })
 })
 
 function mockConsumerStatuses(consumerStatusService) {
