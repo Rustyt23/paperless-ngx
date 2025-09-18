@@ -50,6 +50,53 @@ from documents.utils import run_subprocess
 from paperless_mail.parsers import MailDocumentParser
 
 
+class PreConsumeScriptError(Exception):
+    """Base exception for pre-consume script execution errors."""
+
+
+class PreConsumeScriptNotFoundError(PreConsumeScriptError):
+    """Raised when the configured pre-consume script does not exist."""
+
+
+def execute_pre_consume_script(
+    *,
+    original_file_path: Path,
+    working_file_path: Path,
+    task_id: str | None,
+    logger,
+) -> None:
+    """Execute the configured pre-consume script with the expected environment."""
+
+    if not settings.PRE_CONSUME_SCRIPT:
+        return
+
+    script_path = Path(settings.PRE_CONSUME_SCRIPT)
+
+    if not script_path.is_file():
+        raise PreConsumeScriptNotFoundError(
+            f"Configured pre-consume script {settings.PRE_CONSUME_SCRIPT} does not exist."
+        )
+
+    logger.info(f"Executing pre-consume script {settings.PRE_CONSUME_SCRIPT}")
+
+    script_env = os.environ.copy()
+    script_env["DOCUMENT_SOURCE_PATH"] = str(original_file_path)
+    script_env["DOCUMENT_WORKING_PATH"] = str(working_file_path)
+    script_env["TASK_ID"] = task_id or ""
+
+    try:
+        run_subprocess(
+            [
+                settings.PRE_CONSUME_SCRIPT,
+                str(original_file_path),
+            ],
+            script_env,
+            logger,
+        )
+    except Exception as exc:  # pragma: no cover - handled by caller
+        raise PreConsumeScriptError from exc
+
+
 class WorkflowTriggerPlugin(
     NoCleanupPluginMixin,
     NoSetupPluginMixin,
@@ -163,42 +210,24 @@ class ConsumerPlugin(
         If one is configured and exists, run the pre-consume script and
         handle its output and/or errors
         """
-        if not settings.PRE_CONSUME_SCRIPT:
-            return
-
-        if not Path(settings.PRE_CONSUME_SCRIPT).is_file():
+        try:
+            execute_pre_consume_script(
+                original_file_path=self.input_doc.original_file,
+                working_file_path=self.working_copy,
+                task_id=self.task_id,
+                logger=self.log,
+            )
+        except PreConsumeScriptNotFoundError as exc:
             self._fail(
                 ConsumerStatusShortMessage.PRE_CONSUME_SCRIPT_NOT_FOUND,
-                f"Configured pre-consume script "
-                f"{settings.PRE_CONSUME_SCRIPT} does not exist.",
+                str(exc),
             )
-
-        self.log.info(f"Executing pre-consume script {settings.PRE_CONSUME_SCRIPT}")
-
-        working_file_path = str(self.working_copy)
-        original_file_path = str(self.input_doc.original_file)
-
-        script_env = os.environ.copy()
-        script_env["DOCUMENT_SOURCE_PATH"] = original_file_path
-        script_env["DOCUMENT_WORKING_PATH"] = working_file_path
-        script_env["TASK_ID"] = self.task_id or ""
-
-        try:
-            run_subprocess(
-                [
-                    settings.PRE_CONSUME_SCRIPT,
-                    original_file_path,
-                ],
-                script_env,
-                self.log,
-            )
-
-        except Exception as e:
+        except PreConsumeScriptError as exc:
             self._fail(
                 ConsumerStatusShortMessage.PRE_CONSUME_SCRIPT_ERROR,
-                f"Error while executing pre-consume script: {e}",
+                f"Error while executing pre-consume script: {exc.__cause__ or exc}",
                 exc_info=True,
-                exception=e,
+                exception=exc.__cause__ or exc,
             )
 
     def run_post_consume_script(self, document: Document):
