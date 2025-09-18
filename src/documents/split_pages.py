@@ -8,6 +8,10 @@ from django.conf import settings
 from pikepdf import Page
 from pikepdf import Pdf
 
+from documents.consumer import ConsumerError
+from documents.consumer import execute_pre_consume_script
+from documents.consumer import PreConsumeScriptError
+from documents.consumer import PreConsumeScriptNotFoundError
 from documents.data_models import ConsumableDocument
 from documents.plugins.base import ConsumeTaskPlugin
 from documents.plugins.base import StopConsumeTaskError
@@ -43,6 +47,28 @@ class SplitPagesPlugin(ConsumeTaskPlugin):
 
         if num_pages <= 1:
             return None
+
+        working_copy = Path(self.temp_dir.name) / self.pdf_file.name
+        copy_file_with_basic_stats(self.pdf_file, working_copy)
+
+        try:
+            execute_pre_consume_script(
+                original_file_path=self.pdf_file,
+                working_file_path=working_copy,
+                task_id=self.task_id,
+                logger=logger,
+            )
+        except PreConsumeScriptNotFoundError as exc:
+            raise ConsumerError(str(exc)) from exc
+        except PreConsumeScriptError as exc:
+            raise ConsumerError(
+                f"Error while executing pre-consume script: {exc.__cause__ or exc}"
+            ) from exc
+        else:
+            copy_file_with_basic_stats(working_copy, self.pdf_file)
+        finally:
+            if working_copy.exists():
+                working_copy.unlink()
 
         pages_to_split = {i: True for i in range(1, num_pages)}
 
